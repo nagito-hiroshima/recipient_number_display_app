@@ -1,0 +1,48 @@
+{
+  "name": "receipt-number-display-app",
+  "version": "1.0.0",
+  "description": "Real-time ticket number display system like McDonald's",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "concurrently \"npm run server:dev\" \"npm run client:dev\"",
+    "build": "npm run build:server && npm run build:client",
+    "build:server": "tsc --project tsconfig.server.json",
+    "build:client": "vite build",
+    "server": "node dist/server.js",
+    "server:dev": "ts-node --project tsconfig.server.json server.ts",
+    "client:dev": "vite --host 0.0.0.0"
+  },
+  "keywords": [
+    "ticket",
+    "display",
+    "real-time",
+    "websocket"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "cros": "^1.1.0",
+    "dotenv": "^17.4.2",
+    "express": "^4.18.2",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.20.0",
+    "socket.io": "^4.7.2",
+    "socket.io-client": "^4.7.2",
+    "sql.js": "^1.8.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^4.17.20",
+    "@types/node": "^20.8.0",
+    "@types/react": "^18.2.28",
+    "@types/react-dom": "^18.2.13",
+    "@types/sql.js": "^1.4.4",
+    "@types/ws": "^8.5.7",
+    "@vitejs/plugin-react": "^4.2.0",
+    "concurrently": "^8.2.1",
+    "ts-node": "^10.9.1",
+    "typescript": "^5.2.2",
+    "vite": "^5.0.0"
+  }
+}
