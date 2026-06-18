@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: recipient-number-display-app
+    runtime: node
+    plan: free
+    buildCommand: pnpm install --frozen-lockfile && pnpm run build
+    startCommand: node dist/server.js
+    envVars:
+      - key: API_TOKEN
+        sync: false
+      - key: SQUARE_ACCESS_TOKEN
+        sync: false
+      - key: SQUARE_WEBHOOK_SIGNATURE_KEY
+        sync: false
+      - key: SQUARE_WEBHOOK_URL
+        sync: false
+      - key: SQUARE_ENV
+        value: production
