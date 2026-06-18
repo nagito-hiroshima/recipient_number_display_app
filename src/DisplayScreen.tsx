@@ -1,10 +1,21 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useWebSocket } from './useWebSocket';
 import { TicketDisplay } from './TicketDisplay';
+import { TicketMenu } from './TicketMenu';
+import { Ticket } from './types';
 
 export const DisplayScreen: React.FC = () => {
   const { tickets, isConnected } = useWebSocket();
   const [isLoading, setIsLoading] = useState(false);
+  // 長押しメニューの対象伝票（null のとき非表示）
+  const [menuTicket, setMenuTicket] = useState<Ticket | null>(null);
+  // 経過時間表示を更新するための現在時刻（30秒ごとに更新）
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 30000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const handleStatusChange = async (ticketId: string, newStatus: string) => {
     setIsLoading(true);
@@ -23,6 +34,36 @@ export const DisplayScreen: React.FC = () => {
     }
   };
 
+  const handleDelete = async (ticketId: string) => {
+    setIsLoading(true);
+    try {
+      const response = await fetch(`/api/tickets/${ticketId}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) {
+        throw new Error('Failed to delete ticket');
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // メニューから「移動する」
+  const handleMenuMove = (ticketId: string, status: 'preparing' | 'calling') => {
+    setMenuTicket(null);
+    handleStatusChange(ticketId, status).catch((err) =>
+      console.error('Error moving ticket:', err)
+    );
+  };
+
+  // メニューから「削除する」
+  const handleMenuDelete = (ticketId: string) => {
+    setMenuTicket(null);
+    handleDelete(ticketId).catch((err) =>
+      console.error('Error deleting ticket:', err)
+    );
+  };
+
   return (
     <div style={styles.app}>
       <header style={styles.header}>
@@ -38,15 +79,28 @@ export const DisplayScreen: React.FC = () => {
           tickets={tickets}
           status="preparing"
           onStatusChange={handleStatusChange}
+          onLongPress={setMenuTicket}
           isLoading={isLoading}
+          now={now}
         />
         <TicketDisplay
           tickets={tickets}
           status="calling"
           onStatusChange={handleStatusChange}
+          onLongPress={setMenuTicket}
           isLoading={isLoading}
+          now={now}
         />
       </div>
+
+      {menuTicket && (
+        <TicketMenu
+          ticket={menuTicket}
+          onMove={handleMenuMove}
+          onDelete={handleMenuDelete}
+          onClose={() => setMenuTicket(null)}
+        />
+      )}
     </div>
   );
 };
