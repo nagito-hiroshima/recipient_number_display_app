@@ -233,7 +233,10 @@ app.post('/api/square/webhook', async (req: Request & { rawBody?: Buffer }, res)
       displayId = `${displayId}-${suffix}`;
     }
 
-    const ticket = db.createTicket(displayId, orderId);
+    // billing_address があればスマホ（オンライン注文）からの発行とみなす
+    const fromMobile = !!payment?.billing_address;
+
+    const ticket = db.createTicket(displayId, orderId, fromMobile);
     broadcastUpdate({ type: 'ticket:created', data: ticket });
 
     console.log(`Square webhook: issued ticket ${displayId} for order ${orderId}`);

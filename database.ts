@@ -24,14 +24,16 @@ export class TicketDatabase {
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           called_at DATETIME,
           completed_at DATETIME,
-          source_order_id TEXT
+          source_order_id TEXT,
+          from_mobile INTEGER NOT NULL DEFAULT 0
         )
       `);
       this.save();
     }
 
-    // 既存DBに source_order_id 列が無ければ追加（マイグレーション）
+    // 既存DBに列が無ければ追加（マイグレーション）
     this.ensureColumn('source_order_id', 'TEXT');
+    this.ensureColumn('from_mobile', 'INTEGER NOT NULL DEFAULT 0');
   }
 
   private ensureColumn(name: string, type: string): void {
@@ -56,20 +58,20 @@ export class TicketDatabase {
     fs.writeFileSync(DB_PATH, buffer);
   }
 
-  createTicket(id: string, sourceOrderId?: string): Ticket {
+  createTicket(id: string, sourceOrderId?: string, fromMobile = false): Ticket {
     if (!this.db) throw new Error('Database not initialized');
 
-    this.db.run('INSERT INTO tickets (id, status, source_order_id) VALUES (?, ?, ?)', [
-      id,
-      'preparing',
-      sourceOrderId ?? null,
-    ]);
+    this.db.run(
+      'INSERT INTO tickets (id, status, source_order_id, from_mobile) VALUES (?, ?, ?, ?)',
+      [id, 'preparing', sourceOrderId ?? null, fromMobile ? 1 : 0]
+    );
     this.save();
 
     return {
       id,
       status: 'preparing',
       createdAt: new Date(),
+      fromMobile,
     };
   }
 
@@ -89,6 +91,7 @@ export class TicketDatabase {
         createdAt: new Date(row.created_at as string),
         calledAt: row.called_at ? new Date(row.called_at as string) : undefined,
         completedAt: row.completed_at ? new Date(row.completed_at as string) : undefined,
+        fromMobile: !!row.from_mobile,
       };
     }
     stmt.free();
@@ -121,6 +124,7 @@ export class TicketDatabase {
         createdAt: new Date(row.created_at as string),
         calledAt: row.called_at ? new Date(row.called_at as string) : undefined,
         completedAt: row.completed_at ? new Date(row.completed_at as string) : undefined,
+        fromMobile: !!row.from_mobile,
       });
     }
     stmt.free();
@@ -163,6 +167,7 @@ export class TicketDatabase {
         createdAt: new Date(row.created_at as string),
         calledAt: row.called_at ? new Date(row.called_at as string) : undefined,
         completedAt: row.completed_at ? new Date(row.completed_at as string) : undefined,
+        fromMobile: !!row.from_mobile,
       };
     }
     stmt.free();

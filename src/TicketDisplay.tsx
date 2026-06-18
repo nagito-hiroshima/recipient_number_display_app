@@ -36,26 +36,32 @@ export const TicketDisplay: React.FC<TicketDisplayProps> = ({
             {title}の伝票はありません
           </div>
         ) : (
-          filteredTickets.map((ticket) => (
-            <div
-              key={ticket.id}
-              style={{
-                ...styles.ticketCard,
-                backgroundColor: status === 'preparing' ? '#2196f3' : '#f50057',
-                opacity: isLoading ? 0.6 : 1,
-              }}
-              onClick={() => !isLoading && handleClick(ticket.id)}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => {
-                if ((e.key === 'Enter' || e.key === ' ') && !isLoading) {
-                  handleClick(ticket.id);
-                }
-              }}
-            >
-              <div style={styles.ticketNumber}>{ticket.id}</div>
-            </div>
-          ))
+          filteredTickets.map((ticket) => {
+            // スマホ（オンライン注文）からの伝票は色味を少し変える
+            const baseColor = status === 'preparing' ? '#2196f3' : '#f50057';
+            const mobileColor = status === 'preparing' ? '#7e57c2' : '#ff6f00';
+            return (
+              <div
+                key={ticket.id}
+                style={{
+                  ...styles.ticketCard,
+                  backgroundColor: ticket.fromMobile ? mobileColor : baseColor,
+                  opacity: isLoading ? 0.6 : 1,
+                }}
+                onClick={() => !isLoading && handleClick(ticket.id)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if ((e.key === 'Enter' || e.key === ' ') && !isLoading) {
+                    handleClick(ticket.id);
+                  }
+                }}
+              >
+                {ticket.fromMobile && <div style={styles.mobileBadge}>📱 スマホ注文</div>}
+                <div style={styles.ticketNumber}>{ticket.id}</div>
+              </div>
+            );
+          })
         )}
       </div>
     </div>
@@ -102,6 +108,15 @@ const styles: { [key: string]: React.CSSProperties } = {
     color: '#fff',
     marginBottom: '8px',
     letterSpacing: '4px',
+  },
+  mobileBadge: {
+    fontSize: '13px',
+    fontWeight: 'bold',
+    color: '#fff',
+    backgroundColor: 'rgba(0,0,0,0.25)',
+    padding: '2px 10px',
+    borderRadius: '10px',
+    marginBottom: '6px',
   },
   emptyMessage: {
     textAlign: 'center',

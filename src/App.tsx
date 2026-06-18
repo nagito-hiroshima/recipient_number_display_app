@@ -2,14 +2,27 @@ import React, { useState } from 'react';
 import { useWebSocket } from './useWebSocket';
 import { TicketInput } from './TicketInput';
 
+const API_KEY_STORAGE_KEY = 'apiToken';
+
 export const InputScreen: React.FC = () => {
   const { isConnected } = useWebSocket();
   const [isLoading, setIsLoading] = useState(false);
+  const [apiKey, setApiKey] = useState<string>(
+    () => localStorage.getItem(API_KEY_STORAGE_KEY) || ''
+  );
+
+  const handleApiKeyChange = (value: string) => {
+    setApiKey(value);
+    localStorage.setItem(API_KEY_STORAGE_KEY, value);
+  };
 
   const handleSubmitTicket = async (ticketId: string) => {
+    if (!apiKey.trim()) {
+      throw new Error('APIキーを入力してください');
+    }
     setIsLoading(true);
     try {
-      const token = import.meta.env.VITE_API_TOKEN;
+      const token = apiKey.trim();
       const response = await fetch('/api/tickets', {
         method: 'POST',
         headers: {
@@ -40,6 +53,23 @@ export const InputScreen: React.FC = () => {
       </header>
 
       <div style={styles.container}>
+        <div style={styles.apiKeyBox}>
+          <label style={styles.apiKeyLabel} htmlFor="api-key-input">
+            APIキー
+          </label>
+          <input
+            id="api-key-input"
+            type="password"
+            value={apiKey}
+            onChange={(e) => handleApiKeyChange(e.target.value)}
+            placeholder="APIキーを入力"
+            autoComplete="off"
+            style={styles.apiKeyInput}
+          />
+          <span style={{ color: apiKey.trim() ? '#4caf50' : '#f44336', fontSize: '12px' }}>
+            {apiKey.trim() ? '設定済み' : '未設定'}
+          </span>
+        </div>
         <TicketInput onSubmit={handleSubmitTicket} isLoading={isLoading} />
       </div>
     </div>
@@ -73,7 +103,34 @@ const styles: { [key: string]: React.CSSProperties } = {
     flex: 1,
     padding: '40px 20px',
     display: 'flex',
+    flexDirection: 'column',
     justifyContent: 'center',
     alignItems: 'center',
+    gap: '20px',
+  },
+  apiKeyBox: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    maxWidth: '500px',
+    width: '100%',
+    padding: '12px 16px',
+    backgroundColor: '#fff',
+    border: '1px solid #ddd',
+    borderRadius: '8px',
+  },
+  apiKeyLabel: {
+    fontSize: '14px',
+    fontWeight: 'bold',
+    color: '#333',
+    whiteSpace: 'nowrap',
+  },
+  apiKeyInput: {
+    flex: 1,
+    padding: '8px 12px',
+    fontSize: '14px',
+    border: '1px solid #ccc',
+    borderRadius: '6px',
+    outline: 'none',
   },
 };
