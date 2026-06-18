@@ -226,7 +226,7 @@ app.post('/api/square/webhook', async (req: Request & { rawBody?: Buffer }, res)
     }
 
     // 表示番号が他の有効な伝票と衝突する場合は枝番を付与
-    let displayId = resolveTicketNumber(order);
+    let displayId = resolveTicketNumber(order, payment?.receipt_number);
     if (db.hasTicket(displayId)) {
       let suffix = 2;
       while (db.hasTicket(`${displayId}-${suffix}`)) suffix++;

@@ -53,10 +53,6 @@ export function verifySquareSignature(
 export interface SquareOrder {
   id: string;
   ticket_name?: string;
-  fulfillments?: Array<{
-    type?: string;
-    pickup_details?: { recipient?: { display_name?: string } };
-  }>;
   [key: string]: any;
 }
 
@@ -89,16 +85,22 @@ export async function retrieveOrder(orderId: string): Promise<SquareOrder | null
 
 /**
  * 注文から伝票番号（表示用ID）を決定する。
- * 優先順: ticket_name → 引き取り先の表示名 → 注文IDの末尾
+ * - ticket_name があればそれを使う（＝オーダー番号）
+ * - 無ければレシート番号を使う（＝注文番号 / Square上の「レシート番号」例: 5mnj）
+ * - レシート番号も無ければ注文IDの末尾6文字をフォールバックに使う
+ *
+ * @param receiptNumber Square Payment の receipt_number（レシート番号）
  */
-export function resolveTicketNumber(order: SquareOrder): string {
+export function resolveTicketNumber(order: SquareOrder, receiptNumber?: string): string {
   if (order.ticket_name && order.ticket_name.trim()) {
+    // オーダー番号
     return order.ticket_name.trim();
   }
 
-  const pickupName =
-    order.fulfillments?.[0]?.pickup_details?.recipient?.display_name?.trim();
-  if (pickupName) return pickupName;
+  // 注文番号: Square のレシート番号
+  if (receiptNumber && receiptNumber.trim()) {
+    return receiptNumber.trim();
+  }
 
   // フォールバック: 注文IDの末尾6文字
   return order.id.slice(-6);
