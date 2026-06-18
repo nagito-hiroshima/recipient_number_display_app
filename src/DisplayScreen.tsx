@@ -28,13 +28,12 @@ export const DisplayScreen: React.FC = () => {
       <header style={styles.header}>
         <h1 style={styles.title}>伝票表示画面</h1>
         <div style={styles.connectionStatus}>
-          <span style={{ color: isConnected ? '#4caf50' : '#f44336' }}>
-            {isConnected ? '●' : '●'} {isConnected ? '接続中' : '接続中...'}
-          </span>
+          <span className={`status-dot ${isConnected ? 'status-dot--on' : 'status-dot--off'}`} />
+          {isConnected ? '接続中' : '再接続中...'}
         </div>
       </header>
 
-      <div style={styles.mainContent}>
+      <div className="display-main" style={styles.mainContent}>
         <TicketDisplay
           tickets={tickets}
           status="preparing"
@@ -57,23 +56,30 @@ const styles: { [key: string]: React.CSSProperties } = {
     height: '100vh',
     display: 'flex',
     flexDirection: 'column',
-    backgroundColor: '#fafafa',
+    backgroundColor: 'var(--bg)',
   },
   header: {
-    backgroundColor: '#2c3e50',
+    background: 'var(--header-bg)',
     color: 'white',
-    padding: '15px 20px',
+    padding: '16px 28px',
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
+    boxShadow: 'var(--shadow-md)',
+    zIndex: 1,
   },
   title: {
     margin: 0,
-    fontSize: '24px',
-    fontWeight: 'bold',
+    fontSize: '22px',
+    fontWeight: 800,
+    letterSpacing: '0.04em',
   },
   connectionStatus: {
     fontSize: '14px',
+    fontWeight: 600,
+    display: 'flex',
+    alignItems: 'center',
+    color: 'rgba(255,255,255,0.9)',
   },
   mainContent: {
     flex: 1,

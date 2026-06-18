@@ -1,7 +1,48 @@
+:root {
+  /* Color tokens */
+  --bg: #eef2f7;
+  --surface: #ffffff;
+  --surface-muted: #f4f6fb;
+  --border: #e2e8f0;
+  --text: #1e293b;
+  --text-muted: #64748b;
+
+  --primary: #2563eb;
+  --primary-dark: #1d4ed8;
+
+  --preparing-from: #3b82f6;
+  --preparing-to: #2563eb;
+  --preparing-mobile-from: #8b5cf6;
+  --preparing-mobile-to: #6d28d9;
+
+  --calling-from: #fb7185;
+  --calling-to: #e11d48;
+  --calling-mobile-from: #fbbf24;
+  --calling-mobile-to: #f97316;
+
+  --success: #16a34a;
+  --danger: #ef4444;
+
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 4px 14px rgba(15, 23, 42, 0.10);
+  --shadow-lg: 0 12px 32px rgba(15, 23, 42, 0.16);
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+
+  --header-bg: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+}
+
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
 }
 
 body {
@@ -10,10 +51,141 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: #fafafa;
+  color: var(--text);
+  background-color: var(--bg);
 }
 
 #root {
   width: 100%;
   height: 100vh;
+}
+
+/* ------------------------------------------------------------------ */
+/* Animations                                                          */
+/* ------------------------------------------------------------------ */
+@keyframes pop-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.92) translateY(8px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(0.75);
+  }
+}
+
+@keyframes calling-glow {
+  0%,
+  100% {
+    box-shadow: 0 8px 24px rgba(225, 29, 72, 0.35);
+  }
+  50% {
+    box-shadow: 0 8px 36px rgba(225, 29, 72, 0.7);
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Connection status dot                                               */
+/* ------------------------------------------------------------------ */
+.status-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+.status-dot--on {
+  background-color: #4ade80;
+  box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.25);
+  animation: pulse-dot 1.8s ease-in-out infinite;
+}
+.status-dot--off {
+  background-color: #f87171;
+  box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.25);
+  animation: pulse-dot 1s ease-in-out infinite;
+}
+
+/* ------------------------------------------------------------------ */
+/* Ticket cards                                                        */
+/* ------------------------------------------------------------------ */
+.ticket-card {
+  animation: pop-in 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.ticket-card:hover {
+  transform: translateY(-4px) scale(1.02);
+  filter: brightness(1.05);
+}
+.ticket-card:active {
+  transform: translateY(-1px) scale(0.99);
+}
+.ticket-card:focus-visible {
+  outline: 3px solid rgba(255, 255, 255, 0.8);
+  outline-offset: 2px;
+}
+.ticket-card--calling {
+  animation: pop-in 0.28s cubic-bezier(0.16, 1, 0.3, 1),
+    calling-glow 2.2s ease-in-out infinite 0.3s;
+}
+
+/* ------------------------------------------------------------------ */
+/* Keypad / action buttons                                             */
+/* ------------------------------------------------------------------ */
+.kp-btn {
+  transition: transform 0.12s ease, filter 0.12s ease, box-shadow 0.12s ease;
+}
+.kp-btn:hover:not(:disabled) {
+  filter: brightness(1.06);
+  box-shadow: var(--shadow-md);
+}
+.kp-btn:active:not(:disabled) {
+  transform: translateY(2px) scale(0.98);
+  filter: brightness(0.96);
+}
+.kp-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ------------------------------------------------------------------ */
+/* Inputs                                                              */
+/* ------------------------------------------------------------------ */
+.text-input:focus {
+  border-color: var(--primary) !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+/* ------------------------------------------------------------------ */
+/* Scrollbar                                                           */
+/* ------------------------------------------------------------------ */
+.scroll-area::-webkit-scrollbar {
+  width: 8px;
+}
+.scroll-area::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.35);
+  border-radius: 8px;
+}
+.scroll-area::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ------------------------------------------------------------------ */
+/* Responsive                                                          */
+/* ------------------------------------------------------------------ */
+@media (max-width: 768px) {
+  .display-main {
+    flex-direction: column !important;
+  }
 }

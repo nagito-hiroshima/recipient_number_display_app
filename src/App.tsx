@@ -46,9 +46,8 @@ export const InputScreen: React.FC = () => {
       <header style={styles.header}>
         <h1 style={styles.title}>伝票入力画面</h1>
         <div style={styles.connectionStatus}>
-          <span style={{ color: isConnected ? '#4caf50' : '#f44336' }}>
-            {isConnected ? '●' : '●'} {isConnected ? '接続中' : '接続中...'}
-          </span>
+          <span className={`status-dot ${isConnected ? 'status-dot--on' : 'status-dot--off'}`} />
+          {isConnected ? '接続中' : '再接続中...'}
         </div>
       </header>
 
@@ -59,6 +58,7 @@ export const InputScreen: React.FC = () => {
           </label>
           <input
             id="api-key-input"
+            className="text-input"
             type="password"
             value={apiKey}
             onChange={(e) => handleApiKeyChange(e.target.value)}
@@ -66,7 +66,13 @@ export const InputScreen: React.FC = () => {
             autoComplete="off"
             style={styles.apiKeyInput}
           />
-          <span style={{ color: apiKey.trim() ? '#4caf50' : '#f44336', fontSize: '12px' }}>
+          <span
+            style={{
+              ...styles.apiKeyStatus,
+              color: apiKey.trim() ? 'var(--success)' : 'var(--danger)',
+              backgroundColor: apiKey.trim() ? 'rgba(22,163,74,0.1)' : 'rgba(239,68,68,0.1)',
+            }}
+          >
             {apiKey.trim() ? '設定済み' : '未設定'}
           </span>
         </div>
@@ -81,56 +87,73 @@ const styles: { [key: string]: React.CSSProperties } = {
     height: '100vh',
     display: 'flex',
     flexDirection: 'column',
-    backgroundColor: '#fafafa',
+    backgroundColor: 'var(--bg)',
   },
   header: {
-    backgroundColor: '#2c3e50',
+    background: 'var(--header-bg)',
     color: 'white',
-    padding: '15px 20px',
+    padding: '16px 28px',
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
+    boxShadow: 'var(--shadow-md)',
+    zIndex: 1,
   },
   title: {
     margin: 0,
-    fontSize: '24px',
-    fontWeight: 'bold',
+    fontSize: '22px',
+    fontWeight: 800,
+    letterSpacing: '0.04em',
   },
   connectionStatus: {
     fontSize: '14px',
+    fontWeight: 600,
+    display: 'flex',
+    alignItems: 'center',
+    color: 'rgba(255,255,255,0.9)',
   },
   container: {
     flex: 1,
-    padding: '40px 20px',
+    padding: '32px 20px',
     display: 'flex',
     flexDirection: 'column',
     justifyContent: 'center',
     alignItems: 'center',
-    gap: '20px',
+    gap: '16px',
+    overflowY: 'auto',
   },
   apiKeyBox: {
     display: 'flex',
     alignItems: 'center',
-    gap: '10px',
-    maxWidth: '500px',
+    gap: '12px',
+    maxWidth: '460px',
     width: '100%',
-    padding: '12px 16px',
-    backgroundColor: '#fff',
-    border: '1px solid #ddd',
-    borderRadius: '8px',
+    padding: '14px 18px',
+    backgroundColor: 'var(--surface)',
+    border: '1px solid var(--border)',
+    borderRadius: 'var(--radius-md)',
+    boxShadow: 'var(--shadow-sm)',
   },
   apiKeyLabel: {
     fontSize: '14px',
-    fontWeight: 'bold',
-    color: '#333',
+    fontWeight: 700,
+    color: 'var(--text)',
     whiteSpace: 'nowrap',
   },
   apiKeyInput: {
     flex: 1,
-    padding: '8px 12px',
+    padding: '10px 12px',
     fontSize: '14px',
-    border: '1px solid #ccc',
-    borderRadius: '6px',
+    border: '1px solid var(--border)',
+    borderRadius: 'var(--radius-sm)',
     outline: 'none',
+    transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
+  },
+  apiKeyStatus: {
+    fontSize: '12px',
+    fontWeight: 700,
+    padding: '4px 10px',
+    borderRadius: '999px',
+    whiteSpace: 'nowrap',
   },
 };
