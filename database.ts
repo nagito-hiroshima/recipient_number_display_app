@@ -23,9 +23,28 @@ export class TicketDatabase {
           status TEXT NOT NULL DEFAULT 'preparing',
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           called_at DATETIME,
-          completed_at DATETIME
+          completed_at DATETIME,
+          source_order_id TEXT
         )
       `);
+      this.save();
+    }
+
+    // 既存DBに source_order_id 列が無ければ追加（マイグレーション）
+    this.ensureColumn('source_order_id', 'TEXT');
+  }
+
+  private ensureColumn(name: string, type: string): void {
+    if (!this.db) return;
+    const stmt = this.db.prepare('PRAGMA table_info(tickets)');
+    let exists = false;
+    while (stmt.step()) {
+      const row = stmt.getAsObject();
+      if (row.name === name) exists = true;
+    }
+    stmt.free();
+    if (!exists) {
+      this.db.run(`ALTER TABLE tickets ADD COLUMN ${name} ${type}`);
       this.save();
     }
   }
@@ -37,10 +56,14 @@ export class TicketDatabase {
     fs.writeFileSync(DB_PATH, buffer);
   }
 
-  createTicket(id: string): Ticket {
+  createTicket(id: string, sourceOrderId?: string): Ticket {
     if (!this.db) throw new Error('Database not initialized');
 
-    this.db.run('INSERT INTO tickets (id, status) VALUES (?, ?)', [id, 'preparing']);
+    this.db.run('INSERT INTO tickets (id, status, source_order_id) VALUES (?, ?, ?)', [
+      id,
+      'preparing',
+      sourceOrderId ?? null,
+    ]);
     this.save();
 
     return {
@@ -48,6 +71,37 @@ export class TicketDatabase {
       status: 'preparing',
       createdAt: new Date(),
     };
+  }
+
+  // 指定したSquare注文IDから発行済みのチケットを返す（重複発行防止用）
+  getTicketBySourceOrderId(sourceOrderId: string): Ticket | null {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const stmt = this.db.prepare('SELECT * FROM tickets WHERE source_order_id = ?');
+    stmt.bind([sourceOrderId]);
+
+    if (stmt.step()) {
+      const row = stmt.getAsObject();
+      stmt.free();
+      return {
+        id: row.id as string,
+        status: row.status as any,
+        createdAt: new Date(row.created_at as string),
+        calledAt: row.called_at ? new Date(row.called_at as string) : undefined,
+        completedAt: row.completed_at ? new Date(row.completed_at as string) : undefined,
+      };
+    }
+    stmt.free();
+    return null;
+  }
+
+  hasTicket(id: string): boolean {
+    if (!this.db) throw new Error('Database not initialized');
+    const stmt = this.db.prepare('SELECT 1 FROM tickets WHERE id = ?');
+    stmt.bind([id]);
+    const found = stmt.step();
+    stmt.free();
+    return found;
   }
 
   getAllTickets(): Ticket[] {
