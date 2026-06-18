@@ -5,6 +5,8 @@ export interface Ticket {
   createdAt: Date;
   calledAt?: Date;
   completedAt?: Date;
+  // スマホ（オンライン注文）から発行された伝票か（billing_address があるオーダー）
+  fromMobile?: boolean;
 }
 
 export interface WebSocketMessage {

@@ -9,12 +9,7 @@ export const useWebSocket = (url?: string) => {
 
   useEffect(() => {
     // 同一オリジンに接続（プロキシ経由）
-    const socketUrl = url || (() => {
-      const origin = "https://recipient_number_display_app.syutarou.xyz";
-      const protocol = origin.startsWith('https://') ? 'wss://' : 'ws://';
-      const host = window.location.hostname;
-      return `${protocol}recipient_number_display_app.syutarou.xyz`;
-    })();
+    const socketUrl = url || 'https://recipient-number-display-app.onrender.com';
     console.log('Connecting to Socket.IO at:', socketUrl);
     
     const newSocket = io(socketUrl, {

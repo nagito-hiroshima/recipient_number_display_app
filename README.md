@@ -109,6 +109,35 @@ URL: http://localhost:5173/display
 | GET | `/api/tickets` | 全伝票取得 |
 | PATCH | `/api/tickets/:id` | 伝票状態更新 |
 | DELETE | `/api/tickets/:id` | 伝票削除 |
+| POST | `/api/square/webhook` | Square Webhook 受信（決済完了で伝票自動発行） |
+
+---
+
+## 🟦 Square 連携（注文データから自動発行）
+
+Square の決済が完了すると、Webhook 経由で伝票が自動発行されます。
+
+### 仕組み
+1. Square で決済が完了すると `payment.updated`（status=`COMPLETED`）の Webhook が `/api/square/webhook` に届く
+2. サーバーが署名（`x-square-hmacsha256-signature`）を検証
+3. 注文（Order）を取得し、**伝票番号 = 注文の `ticket_name`（オーダー番号）**として採番。`ticket_name` が無ければ**レシート番号 `receipt_number`（注文番号 / Square上の「レシート番号」例: 5mnj）**を使用（さらに無ければ注文ID末尾6桁）
+4. 伝票を作成し、Socket.IO で全表示画面に即時反映
+5. 同じ注文IDからの重複発行は防止（冪等性）
+
+### セットアップ
+1. `.env.example` を `.env` にコピーし、Square の値を設定
+
+   | 変数 | 説明 |
+   |------|------|
+   | `SQUARE_ACCESS_TOKEN` | Square API アクセストークン |
+   | `SQUARE_WEBHOOK_SIGNATURE_KEY` | Webhook 署名キー |
+   | `SQUARE_WEBHOOK_URL` | Square に登録した通知先URL（完全一致が必要） |
+   | `SQUARE_ENV` | `sandbox` または `production` |
+
+2. Square Developer Dashboard の **Webhooks** で通知先URL（`https://<your-domain>/api/square/webhook`）と `payment.updated` イベントを登録
+3. 公開URLが必要（ローカル検証時は ngrok 等でトンネリング）
+
+> 注: 署名検証は `SQUARE_WEBHOOK_URL` と Square 登録URLが**完全一致**している必要があります。
 
 ### リクエスト/レスポンス例
 

@@ -41,26 +41,31 @@ export const TicketInput: React.FC<TicketInputProps> = ({ onSubmit, isLoading })
     }
   };
 
+  const hasValue = inputValue.length > 0;
+
   return (
     <div style={styles.container}>
-      <h2 style={styles.title}>伝票番号入力</h2>
-      <p style={styles.subtitle}>（3桁まで）</p>
-      
+      <div style={styles.titleWrap}>
+        <h2 style={styles.title}>伝票番号入力</h2>
+        <p style={styles.subtitle}>3桁まで入力できます</p>
+      </div>
+
       {/* ディスプレイ */}
       <div style={styles.display}>
-        <div style={styles.displayValue}>{inputValue || '000'}</div>
+        <div style={{ ...styles.displayValue, color: hasValue ? '#34d399' : 'rgba(52,211,153,0.35)' }}>
+          {inputValue || '000'}
+        </div>
       </div>
 
       {/* エラーメッセージ */}
-      {errorMessage && (
-        <div style={styles.errorMessage}>{errorMessage}</div>
-      )}
+      {errorMessage && <div style={styles.errorMessage}>{errorMessage}</div>}
 
       {/* ボタングリッド */}
       <div style={styles.buttonGrid}>
         {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
           <button
             key={num}
+            className="kp-btn"
             onClick={() => handleNumberClick(num.toString())}
             disabled={isLoading}
             style={styles.numberButton}
@@ -73,6 +78,7 @@ export const TicketInput: React.FC<TicketInputProps> = ({ onSubmit, isLoading })
       {/* 0とコントロール */}
       <div style={styles.controlRow}>
         <button
+          className="kp-btn"
           onClick={() => handleNumberClick('0')}
           disabled={isLoading}
           style={{ ...styles.numberButton, flex: 2 }}
@@ -80,17 +86,19 @@ export const TicketInput: React.FC<TicketInputProps> = ({ onSubmit, isLoading })
           0
         </button>
         <button
+          className="kp-btn"
           onClick={handleBackspace}
           disabled={isLoading || inputValue.length === 0}
           style={styles.backspaceButton}
         >
-          ←削除
+          ← 削除
         </button>
       </div>
 
       {/* アクションボタン */}
       <div style={styles.actionRow}>
         <button
+          className="kp-btn"
           onClick={handleClear}
           disabled={isLoading || inputValue.length === 0}
           style={styles.clearButton}
@@ -98,6 +106,7 @@ export const TicketInput: React.FC<TicketInputProps> = ({ onSubmit, isLoading })
           クリア
         </button>
         <button
+          className="kp-btn"
           onClick={handleSubmit}
           disabled={isLoading || inputValue.length === 0}
           style={styles.submitButton}
@@ -115,109 +124,118 @@ const styles: { [key: string]: React.CSSProperties } = {
     flexDirection: 'column',
     alignItems: 'center',
     gap: '20px',
-    padding: '40px',
-    backgroundColor: '#f5f5f5',
-    borderRadius: '12px',
-    maxWidth: '500px',
+    padding: '32px',
+    backgroundColor: 'var(--surface)',
+    borderRadius: 'var(--radius-lg)',
+    boxShadow: 'var(--shadow-lg)',
+    border: '1px solid var(--border)',
+    maxWidth: '460px',
     width: '100%',
+  },
+  titleWrap: {
+    textAlign: 'center',
   },
   title: {
     margin: 0,
-    fontSize: '28px',
-    fontWeight: 'bold',
-    color: '#333',
+    fontSize: '26px',
+    fontWeight: 800,
+    color: 'var(--text)',
+    letterSpacing: '0.02em',
   },
   subtitle: {
-    margin: 0,
-    fontSize: '14px',
-    color: '#666',
+    margin: '6px 0 0',
+    fontSize: '13px',
+    color: 'var(--text-muted)',
   },
   display: {
     width: '100%',
-    padding: '20px',
-    backgroundColor: '#222',
-    borderRadius: '8px',
+    padding: '22px',
+    background: 'linear-gradient(160deg, #0f172a, #1e293b)',
+    borderRadius: 'var(--radius-md)',
     textAlign: 'center',
+    boxShadow: 'inset 0 2px 10px rgba(0,0,0,0.45)',
   },
   displayValue: {
-    fontSize: '48px',
-    fontWeight: 'bold',
-    color: '#00ff00',
-    fontFamily: 'monospace',
-    letterSpacing: '4px',
+    fontSize: '52px',
+    fontWeight: 700,
+    fontFamily: "'SF Mono', 'Roboto Mono', Menlo, Consolas, monospace",
+    letterSpacing: '10px',
+    textShadow: '0 0 16px rgba(52,211,153,0.4)',
+    transition: 'color 0.15s ease',
   },
   errorMessage: {
     width: '100%',
     padding: '12px',
-    backgroundColor: '#ffebee',
-    border: '1px solid #ef5350',
-    borderRadius: '6px',
-    color: '#c62828',
+    backgroundColor: '#fef2f2',
+    border: '1px solid #fca5a5',
+    borderRadius: 'var(--radius-sm)',
+    color: '#b91c1c',
     textAlign: 'center',
-    fontWeight: 'bold',
+    fontWeight: 700,
     fontSize: '14px',
   },
   buttonGrid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(3, 1fr)',
-    gap: '10px',
+    gap: '12px',
     width: '100%',
   },
   numberButton: {
-    padding: '20px',
-    fontSize: '24px',
-    fontWeight: 'bold',
-    backgroundColor: '#007bff',
+    padding: '22px',
+    fontSize: '26px',
+    fontWeight: 700,
+    background: 'linear-gradient(135deg, var(--primary), var(--primary-dark))',
     color: 'white',
     border: 'none',
-    borderRadius: '8px',
+    borderRadius: 'var(--radius-md)',
     cursor: 'pointer',
-    transition: 'all 0.2s',
+    boxShadow: 'var(--shadow-sm)',
+    fontVariantNumeric: 'tabular-nums',
   },
   controlRow: {
     display: 'flex',
-    gap: '10px',
+    gap: '12px',
     width: '100%',
   },
   backspaceButton: {
     flex: 1,
-    padding: '20px',
+    padding: '22px',
     fontSize: '16px',
-    fontWeight: 'bold',
-    backgroundColor: '#ff9800',
+    fontWeight: 700,
+    background: 'linear-gradient(135deg, #f59e0b, #d97706)',
     color: 'white',
     border: 'none',
-    borderRadius: '8px',
+    borderRadius: 'var(--radius-md)',
     cursor: 'pointer',
-    transition: 'all 0.2s',
+    boxShadow: 'var(--shadow-sm)',
   },
   actionRow: {
     display: 'flex',
-    gap: '10px',
+    gap: '12px',
     width: '100%',
   },
   clearButton: {
     flex: 1,
-    padding: '16px',
+    padding: '18px',
     fontSize: '16px',
-    fontWeight: 'bold',
-    backgroundColor: '#6c757d',
+    fontWeight: 700,
+    background: 'linear-gradient(135deg, #94a3b8, #64748b)',
     color: 'white',
     border: 'none',
-    borderRadius: '8px',
+    borderRadius: 'var(--radius-md)',
     cursor: 'pointer',
-    transition: 'all 0.2s',
+    boxShadow: 'var(--shadow-sm)',
   },
   submitButton: {
     flex: 2,
-    padding: '16px',
+    padding: '18px',
     fontSize: '16px',
-    fontWeight: 'bold',
-    backgroundColor: '#28a745',
+    fontWeight: 700,
+    background: 'linear-gradient(135deg, #22c55e, #16a34a)',
     color: 'white',
     border: 'none',
-    borderRadius: '8px',
+    borderRadius: 'var(--radius-md)',
     cursor: 'pointer',
-    transition: 'all 0.2s',
+    boxShadow: 'var(--shadow-sm)',
   },
 };
