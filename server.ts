@@ -1,4 +1,5 @@
 import express, { Express, Request, Response, NextFunction } from 'express';
+import path from 'path';
 import { createServer } from 'http';
 import { Server, Socket } from 'socket.io';
 import { TicketDatabase } from './database';
@@ -242,6 +243,12 @@ app.post('/api/square/webhook', async (req: Request & { rawBody?: Buffer }, res)
     // 200 以外を返すと Square がリトライするため、サーバー障害は 500 で通知
     res.status(500).json({ error: 'Failed to handle webhook' });
   }
+});
+
+// SPA フォールバック: API以外のGETはReactアプリのindex.htmlを返す
+// （/display や /number-input などのクライアントルートを直接開けるようにする）
+app.get('*', (req, res) => {
+  res.sendFile(path.resolve('dist/client/index.html'));
 });
 
 // Initialize database and start server
