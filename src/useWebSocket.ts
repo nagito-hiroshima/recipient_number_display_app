@@ -8,15 +8,18 @@ export const useWebSocket = (url?: string) => {
   const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
-    // 同一オリジンに接続（プロキシ経由）
-    const socketUrl = url || 'https://recipient-number-display-app.onrender.com';
+    // 本番は現在開いている画面と同じオリジンへ接続する。
+    // これによりカスタムドメイン利用時も API と Socket.IO が同じサーバーを参照する。
+    // 開発時のみ localhost:3000 のバックエンドへ直接接続する。
+    const socketUrl =
+      url || (import.meta.env.DEV ? 'http://localhost:3000' : window.location.origin);
     console.log('Connecting to Socket.IO at:', socketUrl);
 
     const newSocket = io(socketUrl, {
       reconnection: true,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
-      reconnectionAttempts: 5,
+      reconnectionAttempts: Infinity,
       transports: ['websocket', 'polling'],
     });
 
@@ -67,8 +70,8 @@ export const useWebSocket = (url?: string) => {
       setIsConnected(false);
     });
 
-    newSocket.on('error', (error) => {
-      console.error('Socket.IO error:', error);
+    newSocket.on('connect_error', (error) => {
+      console.error('Socket.IO connection error:', error);
       setIsConnected(false);
     });
 
