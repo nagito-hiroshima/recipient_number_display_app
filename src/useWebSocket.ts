@@ -9,10 +9,12 @@ export const useWebSocket = (url?: string) => {
 
   useEffect(() => {
     // 本番は現在開いている画面と同じオリジンへ接続する。
-    // これによりカスタムドメイン利用時も API と Socket.IO が同じサーバーを参照する。
-    // 開発時のみ localhost:3000 のバックエンドへ直接接続する。
-    const socketUrl =
-      url || (import.meta.env.DEV ? 'http://localhost:3000' : window.location.origin);
+    // カスタムドメイン利用時も API と Socket.IO が同じサーバーを参照する。
+    // Vite 開発サーバー (localhost:5173) のときだけバックエンドへ直接接続する。
+    const isLocalVite =
+      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') &&
+      window.location.port === '5173';
+    const socketUrl = url || (isLocalVite ? 'http://localhost:3000' : window.location.origin);
     console.log('Connecting to Socket.IO at:', socketUrl);
 
     const newSocket = io(socketUrl, {
