@@ -2,6 +2,12 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useWebSocket } from './useWebSocket';
 import { Ticket, WebSocketMessage } from './types';
 
+/**
+ * Chrome 等で SpeechSynthesisUtterance が途中で GC されないよう、
+ * 現在の読み上げオブジェクトを参照保持する。
+ */
+let activeUtterance: SpeechSynthesisUtterance | null = null;
+
 /** 外部音源不要の短い呼び出しチャイム */
 async function playCallChime(): Promise<void> {
   try {
@@ -35,27 +41,44 @@ async function playCallChime(): Promise<void> {
 }
 
 /** ブラウザ標準の日本語音声で伝票番号を読み上げる */
-function speakTicket(ticket: Ticket): void {
+function speakTicket(ticket: Ticket, forceRestart = false): void {
   if (!('speechSynthesis' in window)) return;
 
   try {
+    const synth = window.speechSynthesis;
+
+    // 再呼び出しは、前の読み上げキューが残っていても確実に即時再生する。
+    if (forceRestart) {
+      synth.cancel();
+    }
+    synth.resume();
+
     const spokenNumber = ticket.demo ? ticket.id.replace(/^D/i, '') : ticket.id;
     const message = ticket.demo
       ? `デモ番号 ${spokenNumber} を呼び出します。`
       : `お待たせしました。番号 ${spokenNumber} のお客様、受け取り口までお越しください。`;
 
     const utterance = new SpeechSynthesisUtterance(message);
+    activeUtterance = utterance;
     utterance.lang = 'ja-JP';
     utterance.rate = 0.95;
     utterance.pitch = 1;
     utterance.volume = 1;
 
-    const japaneseVoice = window.speechSynthesis
+    const japaneseVoice = synth
       .getVoices()
       .find((voice) => voice.lang.toLowerCase().startsWith('ja'));
     if (japaneseVoice) utterance.voice = japaneseVoice;
 
-    window.speechSynthesis.speak(utterance);
+    utterance.onend = () => {
+      if (activeUtterance === utterance) activeUtterance = null;
+    };
+    utterance.onerror = (event) => {
+      console.warn('Ticket speech synthesis error:', event.error);
+      if (activeUtterance === utterance) activeUtterance = null;
+    };
+
+    synth.speak(utterance);
   } catch (error) {
     console.warn('Ticket number could not be spoken:', error);
   }
@@ -159,11 +182,12 @@ export const PublicDisplayScreen: React.FC = () => {
   const [lastCalledNumber, setLastCalledNumber] = useState<string | null>(null);
   const [highlightedTicketId, setHighlightedTicketId] = useState<string | null>(null);
   const highlightTimer = useRef<number | null>(null);
+  const speechTimer = useRef<number | null>(null);
 
   useEffect(() => {
     if (!socket) return;
 
-    const announce = (ticket: Ticket) => {
+    const announce = (ticket: Ticket, isRecall = false) => {
       setLastCalledNumber(ticket.id);
       setHighlightedTicketId(ticket.id);
 
@@ -175,8 +199,22 @@ export const PublicDisplayScreen: React.FC = () => {
         highlightTimer.current = null;
       }, 5000);
 
+      // 再呼び出しでは、前回の読み上げや待機キューを消してから再度案内する。
+      if (isRecall && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.resume();
+      }
+
+      if (speechTimer.current !== null) {
+        window.clearTimeout(speechTimer.current);
+        speechTimer.current = null;
+      }
+
       void playCallChime();
-      window.setTimeout(() => speakTicket(ticket), 650);
+      speechTimer.current = window.setTimeout(() => {
+        speakTicket(ticket, isRecall);
+        speechTimer.current = null;
+      }, 700);
     };
 
     const handleTicketUpdate = (message: WebSocketMessage) => {
@@ -184,12 +222,12 @@ export const PublicDisplayScreen: React.FC = () => {
       const ticket = message.data as Ticket;
 
       if (message.type === 'ticket:recalled') {
-        announce(ticket);
+        announce(ticket, true);
         return;
       }
 
       if (message.type === 'ticket:updated' && ticket.status === 'calling') {
-        announce(ticket);
+        announce(ticket, false);
       }
     };
 
@@ -199,6 +237,10 @@ export const PublicDisplayScreen: React.FC = () => {
       if (highlightTimer.current !== null) {
         window.clearTimeout(highlightTimer.current);
         highlightTimer.current = null;
+      }
+      if (speechTimer.current !== null) {
+        window.clearTimeout(speechTimer.current);
+        speechTimer.current = null;
       }
     };
   }, [socket]);
