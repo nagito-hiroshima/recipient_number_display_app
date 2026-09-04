@@ -1,9 +1,10 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Ticket } from './types';
 
 interface TicketMenuProps {
   ticket: Ticket;
   onMove: (ticketId: string, status: 'preparing' | 'calling') => void;
+  onRecall: (ticketId: string, updateCalledAt: boolean) => void;
   onDelete: (ticketId: string) => void;
   onClose: () => void;
 }
@@ -11,11 +12,17 @@ interface TicketMenuProps {
 export const TicketMenu: React.FC<TicketMenuProps> = ({
   ticket,
   onMove,
+  onRecall,
   onDelete,
   onClose,
 }) => {
   const isCalling = ticket.status === 'calling';
   const statusLabel = isCalling ? 'お呼び出し中' : '調理中';
+  const [updateCalledAt, setUpdateCalledAt] = useState(false);
+
+  useEffect(() => {
+    setUpdateCalledAt(false);
+  }, [ticket.id]);
 
   // Esc で閉じる
   useEffect(() => {
@@ -32,17 +39,38 @@ export const TicketMenu: React.FC<TicketMenuProps> = ({
         <div style={styles.header}>
           <span style={styles.headerLabel}>{statusLabel}</span>
           <span style={styles.headerNumber}>{ticket.id}</span>
+          {ticket.demo && <span style={styles.demoBadge}>DEMO</span>}
         </div>
 
         <div style={styles.actions}>
           {isCalling ? (
-            <button
-              className="kp-btn"
-              style={{ ...styles.actionBtn, ...styles.moveBtn }}
-              onClick={() => onMove(ticket.id, 'preparing')}
-            >
-              ↩ 調理中に移動する
-            </button>
+            <>
+              <button
+                className="kp-btn"
+                style={{ ...styles.actionBtn, ...styles.recallBtn }}
+                onClick={() => onRecall(ticket.id, updateCalledAt)}
+              >
+                🔊 再呼び出し
+              </button>
+
+              <label style={styles.checkRow}>
+                <input
+                  type="checkbox"
+                  checked={updateCalledAt}
+                  onChange={(e) => setUpdateCalledAt(e.target.checked)}
+                  style={styles.checkbox}
+                />
+                <span>呼び出し時刻も更新する</span>
+              </label>
+
+              <button
+                className="kp-btn"
+                style={{ ...styles.actionBtn, ...styles.moveBtn }}
+                onClick={() => onMove(ticket.id, 'preparing')}
+              >
+                ↩ 調理中に移動する
+              </button>
+            </>
           ) : (
             <button
               className="kp-btn"
@@ -85,7 +113,7 @@ const styles: { [key: string]: React.CSSProperties } = {
   },
   menu: {
     width: '100%',
-    maxWidth: '360px',
+    maxWidth: '380px',
     backgroundColor: 'var(--surface)',
     borderRadius: 'var(--radius-lg)',
     boxShadow: 'var(--shadow-lg)',
@@ -114,6 +142,16 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontVariantNumeric: 'tabular-nums',
     letterSpacing: '2px',
   },
+  demoBadge: {
+    marginTop: '5px',
+    padding: '3px 9px',
+    borderRadius: '999px',
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    border: '1px solid rgba(255,255,255,0.32)',
+    fontSize: '11px',
+    fontWeight: 900,
+    letterSpacing: '0.12em',
+  },
   actions: {
     display: 'flex',
     flexDirection: 'column',
@@ -134,11 +172,29 @@ const styles: { [key: string]: React.CSSProperties } = {
   callBtn: {
     background: 'linear-gradient(135deg, var(--calling-from), var(--calling-to))',
   },
+  recallBtn: {
+    background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+  },
   moveBtn: {
     background: 'linear-gradient(135deg, var(--preparing-from), var(--preparing-to))',
   },
   deleteBtn: {
     background: 'linear-gradient(135deg, #f87171, #dc2626)',
+  },
+  checkRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    padding: '2px 4px',
+    color: 'var(--text-muted)',
+    fontSize: '13px',
+    fontWeight: 700,
+    cursor: 'pointer',
+  },
+  checkbox: {
+    width: '18px',
+    height: '18px',
+    accentColor: 'var(--primary)',
   },
   cancelBtn: {
     width: '100%',
