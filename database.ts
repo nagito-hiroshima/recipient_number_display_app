@@ -1,5 +1,4 @@
 import fs from 'fs';
-import path from 'path';
 import initSqlJs, { Database as SqlJsDatabase } from 'sql.js';
 import { Ticket } from './src/types';
 
@@ -25,7 +24,8 @@ export class TicketDatabase {
           called_at DATETIME,
           completed_at DATETIME,
           source_order_id TEXT,
-          from_mobile INTEGER NOT NULL DEFAULT 0
+          from_mobile INTEGER NOT NULL DEFAULT 0,
+          demo INTEGER NOT NULL DEFAULT 0
         )
       `);
       this.save();
@@ -34,6 +34,7 @@ export class TicketDatabase {
     // 既存DBに列が無ければ追加（マイグレーション）
     this.ensureColumn('source_order_id', 'TEXT');
     this.ensureColumn('from_mobile', 'INTEGER NOT NULL DEFAULT 0');
+    this.ensureColumn('demo', 'INTEGER NOT NULL DEFAULT 0');
   }
 
   private ensureColumn(name: string, type: string): void {
@@ -58,12 +59,29 @@ export class TicketDatabase {
     fs.writeFileSync(DB_PATH, buffer);
   }
 
-  createTicket(id: string, sourceOrderId?: string, fromMobile = false): Ticket {
+  private rowToTicket(row: Record<string, any>): Ticket {
+    return {
+      id: row.id as string,
+      status: row.status as Ticket['status'],
+      createdAt: new Date(row.created_at as string),
+      calledAt: row.called_at ? new Date(row.called_at as string) : undefined,
+      completedAt: row.completed_at ? new Date(row.completed_at as string) : undefined,
+      fromMobile: !!row.from_mobile,
+      demo: !!row.demo,
+    };
+  }
+
+  createTicket(
+    id: string,
+    sourceOrderId?: string,
+    fromMobile = false,
+    demo = false
+  ): Ticket {
     if (!this.db) throw new Error('Database not initialized');
 
     this.db.run(
-      'INSERT INTO tickets (id, status, source_order_id, from_mobile) VALUES (?, ?, ?, ?)',
-      [id, 'preparing', sourceOrderId ?? null, fromMobile ? 1 : 0]
+      'INSERT INTO tickets (id, status, source_order_id, from_mobile, demo) VALUES (?, ?, ?, ?, ?)',
+      [id, 'preparing', sourceOrderId ?? null, fromMobile ? 1 : 0, demo ? 1 : 0]
     );
     this.save();
 
@@ -72,6 +90,7 @@ export class TicketDatabase {
       status: 'preparing',
       createdAt: new Date(),
       fromMobile,
+      demo,
     };
   }
 
@@ -83,16 +102,22 @@ export class TicketDatabase {
     stmt.bind([sourceOrderId]);
 
     if (stmt.step()) {
-      const row = stmt.getAsObject();
+      const ticket = this.rowToTicket(stmt.getAsObject());
       stmt.free();
-      return {
-        id: row.id as string,
-        status: row.status as any,
-        createdAt: new Date(row.created_at as string),
-        calledAt: row.called_at ? new Date(row.called_at as string) : undefined,
-        completedAt: row.completed_at ? new Date(row.completed_at as string) : undefined,
-        fromMobile: !!row.from_mobile,
-      };
+      return ticket;
+    }
+    stmt.free();
+    return null;
+  }
+
+  getTicket(id: string): Ticket | null {
+    if (!this.db) throw new Error('Database not initialized');
+    const stmt = this.db.prepare('SELECT * FROM tickets WHERE id = ?');
+    stmt.bind([id]);
+    if (stmt.step()) {
+      const ticket = this.rowToTicket(stmt.getAsObject());
+      stmt.free();
+      return ticket;
     }
     stmt.free();
     return null;
@@ -111,21 +136,13 @@ export class TicketDatabase {
     if (!this.db) throw new Error('Database not initialized');
 
     const stmt = this.db.prepare(`
-      SELECT * FROM tickets 
+      SELECT * FROM tickets
       ORDER BY COALESCE(completed_at, called_at, created_at) ASC
     `);
     const tickets: Ticket[] = [];
 
     while (stmt.step()) {
-      const row = stmt.getAsObject();
-      tickets.push({
-        id: row.id as string,
-        status: row.status as any,
-        createdAt: new Date(row.created_at as string),
-        calledAt: row.called_at ? new Date(row.called_at as string) : undefined,
-        completedAt: row.completed_at ? new Date(row.completed_at as string) : undefined,
-        fromMobile: !!row.from_mobile,
-      });
+      tickets.push(this.rowToTicket(stmt.getAsObject()));
     }
     stmt.free();
 
@@ -153,26 +170,24 @@ export class TicketDatabase {
 
     this.db.run(sql, values);
     this.save();
+    return this.getTicket(id);
+  }
 
-    const stmt = this.db.prepare('SELECT * FROM tickets WHERE id = ?');
-    stmt.bind([id]);
+  recallTicket(id: string, updateCalledAt = false): Ticket | null {
+    if (!this.db) throw new Error('Database not initialized');
 
-    if (stmt.step()) {
-      const row = stmt.getAsObject();
-      stmt.free();
+    const ticket = this.getTicket(id);
+    if (!ticket || ticket.status !== 'calling') return null;
 
-      return {
-        id: row.id as string,
-        status: row.status as any,
-        createdAt: new Date(row.created_at as string),
-        calledAt: row.called_at ? new Date(row.called_at as string) : undefined,
-        completedAt: row.completed_at ? new Date(row.completed_at as string) : undefined,
-        fromMobile: !!row.from_mobile,
-      };
+    if (updateCalledAt) {
+      this.db.run('UPDATE tickets SET called_at = ? WHERE id = ?', [
+        new Date().toISOString(),
+        id,
+      ]);
+      this.save();
     }
-    stmt.free();
 
-    return null;
+    return this.getTicket(id);
   }
 
   deleteTicket(id: string): void {
@@ -182,10 +197,25 @@ export class TicketDatabase {
     this.save();
   }
 
+  deleteDemoTickets(): string[] {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const stmt = this.db.prepare('SELECT id FROM tickets WHERE demo = 1');
+    const ids: string[] = [];
+    while (stmt.step()) {
+      const row = stmt.getAsObject();
+      ids.push(row.id as string);
+    }
+    stmt.free();
+
+    this.db.run('DELETE FROM tickets WHERE demo = 1');
+    this.save();
+    return ids;
+  }
+
   close(): void {
     if (this.db) {
       this.db.close();
     }
   }
 }
-
