@@ -229,8 +229,22 @@ app.post('/api/tickets/:id/recall', authenticateToken, (req, res) => {
       return res.status(409).json({ error: 'Ticket could not be recalled' });
     }
 
+    const recallId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const recalledAt = new Date().toISOString();
+
+    // 状態同期用イベント。既存クライアントとの互換性のため残す。
     broadcastUpdate({ type: 'ticket:recalled', data: ticket });
-    res.json({ success: true, ticket });
+
+    // 読み上げ・強調表示専用イベント。
+    // ステータス更新イベントと分離することで再呼び出しを確実に判別する。
+    io.emit('ticket:recall', {
+      ticket,
+      recallId,
+      recalledAt,
+    });
+
+    console.log(`Ticket recalled: ${ticket.id} (${recallId})`);
+    res.json({ success: true, ticket, recallId, recalledAt });
   } catch (err) {
     console.error('Error recalling ticket:', err);
     res.status(500).json({ error: 'Failed to recall ticket' });
