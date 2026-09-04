@@ -96,6 +96,47 @@ body {
   }
 }
 
+@keyframes congestion-critical-bg {
+  0%,
+  100% {
+    background-color: #fecaca;
+  }
+  50% {
+    background-color: #ef4444;
+  }
+}
+
+@keyframes recall-flash {
+  0%,
+  100% {
+    transform: scale(1);
+    filter: brightness(1);
+    box-shadow: 0 8px 24px rgba(225, 29, 72, 0.45);
+  }
+  25%,
+  75% {
+    transform: scale(1.045);
+    filter: brightness(1.35);
+    box-shadow: 0 0 0 8px rgba(250, 204, 21, 0.72),
+      0 12px 42px rgba(225, 29, 72, 0.85);
+  }
+  50% {
+    transform: scale(1.015);
+    filter: brightness(1.1);
+    box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.9),
+      0 10px 32px rgba(225, 29, 72, 0.65);
+  }
+}
+
+.congestion-critical {
+  animation: congestion-critical-bg 1.15s ease-in-out infinite;
+}
+
+.public-ticket-recalled {
+  z-index: 3;
+  animation: recall-flash 0.85s ease-in-out 5 !important;
+}
+
 /* ------------------------------------------------------------------ */
 /* Connection status dot                                               */
 /* ------------------------------------------------------------------ */
