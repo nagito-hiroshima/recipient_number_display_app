@@ -9,7 +9,7 @@ const API_KEY_STORAGE_KEY = 'apiToken';
 
 export const DisplayScreen: React.FC = () => {
   const navigate = useNavigate();
-  const { tickets, isConnected } = useWebSocket();
+  const { socket, tickets, isConnected } = useWebSocket();
   const [isLoading, setIsLoading] = useState(false);
   const [menuTicket, setMenuTicket] = useState<Ticket | null>(null);
   const [now, setNow] = useState(() => Date.now());
@@ -40,6 +40,21 @@ export const DisplayScreen: React.FC = () => {
         setDemoEnabled(false);
       });
   }, []);
+
+  // 別の管理画面からON/OFFされた場合も即時反映する。
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleDemoStatus = (data: { enabled?: boolean; autoRunning?: boolean }) => {
+      if (typeof data.enabled === 'boolean') setDemoEnabled(data.enabled);
+      if (typeof data.autoRunning === 'boolean') setDemoAutoRunning(data.autoRunning);
+    };
+
+    socket.on('demo:status', handleDemoStatus);
+    return () => {
+      socket.off('demo:status', handleDemoStatus);
+    };
+  }, [socket]);
 
   const activeCount = useMemo(
     () => tickets.filter((ticket) => ticket.status === 'preparing' || ticket.status === 'calling').length,
@@ -148,9 +163,8 @@ export const DisplayScreen: React.FC = () => {
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || 'デモ操作に失敗しました');
-      if (typeof data.autoRunning === 'boolean') {
-        setDemoAutoRunning(data.autoRunning);
-      }
+      if (typeof data.enabled === 'boolean') setDemoEnabled(data.enabled);
+      if (typeof data.autoRunning === 'boolean') setDemoAutoRunning(data.autoRunning);
       return data;
     } catch (error) {
       setDemoError(error instanceof Error ? error.message : 'デモ操作に失敗しました');
@@ -158,6 +172,24 @@ export const DisplayScreen: React.FC = () => {
     } finally {
       setDemoBusy(false);
     }
+  };
+
+  const toggleDemoEnabled = () => {
+    if (!apiKey) {
+      setDemoError('APIキー未設定です。「伝票入力へ」からAPIキーを設定してください。');
+      return;
+    }
+
+    if (demoEnabled) {
+      const message = demoAutoRunning
+        ? 'デモモードをOFFにします。自動進行も停止します。デモ伝票は削除されません。よろしいですか？'
+        : 'デモモードをOFFにします。デモ伝票は削除されません。よろしいですか？';
+      if (!window.confirm(message)) return;
+    }
+
+    void demoRequest('/api/demo/enabled', {
+      body: { enabled: !demoEnabled },
+    });
   };
 
   const addDemoTickets = (count: number) => {
@@ -211,20 +243,24 @@ export const DisplayScreen: React.FC = () => {
 
       <div style={styles.demoBar}>
         <div style={styles.demoTitleWrap}>
-          <span
+          <button
+            type="button"
+            className="kp-btn"
             style={{
-              ...styles.demoModeBadge,
+              ...styles.demoModeToggle,
               backgroundColor: demoEnabled ? '#7c3aed' : '#64748b',
             }}
+            disabled={demoBusy || !apiKey}
+            onClick={toggleDemoEnabled}
+            title={apiKey ? 'デモモードをON/OFF' : 'APIキーを設定してください'}
           >
             🧪 DEMO {demoEnabled ? 'ON' : 'OFF'}
+            <span style={styles.demoToggleHint}>切替</span>
+          </button>
+          <span style={styles.demoHelp}>
+            {apiKey ? 'APIキー設定済み' : 'APIキー未設定'}
+            {demoAutoRunning ? ' ・ 自動進行中' : ''}
           </span>
-          {demoEnabled && (
-            <span style={styles.demoHelp}>
-              {apiKey ? 'APIキー設定済み' : 'APIキー未設定'}
-              {demoAutoRunning ? ' ・ 自動進行中' : ''}
-            </span>
-          )}
         </div>
 
         {demoEnabled && (
@@ -379,13 +415,25 @@ const styles: { [key: string]: React.CSSProperties } = {
     alignItems: 'center',
     gap: '9px',
   },
-  demoModeBadge: {
-    padding: '6px 10px',
+  demoModeToggle: {
+    border: 'none',
+    padding: '7px 10px',
     borderRadius: '999px',
     color: '#fff',
     fontSize: '12px',
     fontWeight: 900,
     letterSpacing: '0.05em',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '7px',
+  },
+  demoToggleHint: {
+    padding: '2px 6px',
+    borderRadius: '999px',
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    fontSize: '10px',
+    letterSpacing: 0,
   },
   demoHelp: {
     color: 'var(--text-muted)',
