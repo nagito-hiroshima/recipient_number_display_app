@@ -26,7 +26,6 @@ export const TicketDisplay: React.FC<TicketDisplayProps> = ({
   const isCalling = status === 'calling';
   const title = isCalling ? 'お呼び出し中' : '調理中';
 
-  // 長押し判定用（同時に押されるのは1枚なのでコンポーネント単位で保持）
   const pressTimer = useRef<number | null>(null);
   const longPressFired = useRef(false);
   const startPos = useRef<{ x: number; y: number } | null>(null);
@@ -56,8 +55,6 @@ export const TicketDisplay: React.FC<TicketDisplayProps> = ({
     if (dx > MOVE_THRESHOLD_PX || dy > MOVE_THRESHOLD_PX) cancelPress();
   };
 
-  // タップ＝主操作。調理中→お呼び出し / お呼び出し→完了。
-  // 長押しでメニューが開いた場合はタップ操作を抑制する。
   const handleClick = async (ticketId: string) => {
     if (longPressFired.current) {
       longPressFired.current = false;
@@ -146,12 +143,11 @@ export const TicketDisplay: React.FC<TicketDisplayProps> = ({
                   }
                 }}
               >
-                {elapsed && (
-                  <span style={styles.elapsedPill}>⏱ {elapsed}</span>
-                )}
-                {ticket.fromMobile && (
-                  <div style={styles.mobileBadge}>📱 スマホ注文</div>
-                )}
+                {elapsed && <span style={styles.elapsedPill}>⏱ {elapsed}</span>}
+                <div style={styles.badges}>
+                  {ticket.demo && <span style={styles.demoBadge}>🧪 DEMO</span>}
+                  {ticket.fromMobile && <span style={styles.mobileBadge}>📱 スマホ注文</span>}
+                </div>
                 <div style={styles.ticketNumber}>{ticket.id}</div>
               </div>
             );
@@ -265,14 +261,29 @@ const styles: { [key: string]: React.CSSProperties } = {
     borderRadius: '999px',
     fontVariantNumeric: 'tabular-nums',
   },
+  badges: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: '5px',
+    marginBottom: '8px',
+  },
   mobileBadge: {
-    fontSize: '12px',
+    fontSize: '11px',
     fontWeight: 700,
     color: '#fff',
     backgroundColor: 'rgba(0,0,0,0.22)',
-    padding: '3px 10px',
+    padding: '3px 8px',
     borderRadius: '999px',
-    marginBottom: '8px',
+  },
+  demoBadge: {
+    fontSize: '11px',
+    fontWeight: 900,
+    color: '#fff',
+    backgroundColor: 'rgba(15,23,42,0.42)',
+    padding: '3px 8px',
+    borderRadius: '999px',
+    letterSpacing: '0.05em',
   },
   emptyMessage: {
     gridColumn: '1 / -1',
