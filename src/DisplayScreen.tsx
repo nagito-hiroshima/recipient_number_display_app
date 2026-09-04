@@ -1,36 +1,74 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useWebSocket } from './useWebSocket';
 import { TicketDisplay } from './TicketDisplay';
 import { TicketMenu } from './TicketMenu';
 import { Ticket } from './types';
 
+const API_KEY_STORAGE_KEY = 'apiToken';
+
 export const DisplayScreen: React.FC = () => {
   const navigate = useNavigate();
   const { tickets, isConnected } = useWebSocket();
   const [isLoading, setIsLoading] = useState(false);
-  // 長押しメニューの対象伝票（null のとき非表示）
   const [menuTicket, setMenuTicket] = useState<Ticket | null>(null);
-  // 経過時間表示を更新するための現在時刻（30秒ごとに更新）
   const [now, setNow] = useState(() => Date.now());
+  const [demoEnabled, setDemoEnabled] = useState(false);
+  const [demoAutoRunning, setDemoAutoRunning] = useState(false);
+  const [demoBusy, setDemoBusy] = useState(false);
+  const [demoError, setDemoError] = useState<string | null>(null);
+
+  const apiKey = localStorage.getItem(API_KEY_STORAGE_KEY)?.trim() || '';
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 30000);
     return () => window.clearInterval(timer);
   }, []);
 
+  useEffect(() => {
+    fetch('/api/demo/status')
+      .then(async (response) => {
+        if (!response.ok) throw new Error('デモモード状態を取得できませんでした');
+        return response.json();
+      })
+      .then((data) => {
+        setDemoEnabled(data.enabled === true);
+        setDemoAutoRunning(data.autoRunning === true);
+      })
+      .catch((error) => {
+        console.warn('Failed to load demo status:', error);
+        setDemoEnabled(false);
+      });
+  }, []);
+
+  const activeCount = useMemo(
+    () => tickets.filter((ticket) => ticket.status === 'preparing' || ticket.status === 'calling').length,
+    [tickets]
+  );
+
+  const congestion = useMemo(() => {
+    if (activeCount <= 2) {
+      return { label: '余裕あり', background: '#dcfce7', badge: '#166534', critical: false };
+    }
+    if (activeCount <= 5) {
+      return { label: '少し混雑', background: '#fef9c3', badge: '#854d0e', critical: false };
+    }
+    if (activeCount <= 9) {
+      return { label: '混雑中', background: '#fee2e2', badge: '#b91c1c', critical: false };
+    }
+    return { label: 'かなり混雑', background: '#fecaca', badge: '#991b1b', critical: true };
+  }, [activeCount]);
+
   const handleStatusChange = async (ticketId: string, newStatus: string) => {
     setIsLoading(true);
     try {
-      const response = await fetch(`/api/tickets/${ticketId}`, {
+      const response = await fetch(`/api/tickets/${encodeURIComponent(ticketId)}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus }),
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to update ticket');
-      }
+      if (!response.ok) throw new Error('Failed to update ticket');
     } finally {
       setIsLoading(false);
     }
@@ -39,18 +77,41 @@ export const DisplayScreen: React.FC = () => {
   const handleDelete = async (ticketId: string) => {
     setIsLoading(true);
     try {
-      const response = await fetch(`/api/tickets/${ticketId}`, {
+      const response = await fetch(`/api/tickets/${encodeURIComponent(ticketId)}`, {
         method: 'DELETE',
       });
-      if (!response.ok) {
-        throw new Error('Failed to delete ticket');
-      }
+      if (!response.ok) throw new Error('Failed to delete ticket');
     } finally {
       setIsLoading(false);
     }
   };
 
-  // メニューから「移動する」
+  const handleRecall = async (ticketId: string, updateCalledAt: boolean) => {
+    if (!apiKey) {
+      window.alert('再呼び出しにはAPIキーが必要です。先に「伝票入力へ」からAPIキーを設定してください。');
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/tickets/${encodeURIComponent(ticketId)}/recall`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({ updateCalledAt }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || '再呼び出しに失敗しました');
+      }
+      setMenuTicket(null);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : '再呼び出しに失敗しました');
+    }
+  };
+
   const handleMenuMove = (ticketId: string, status: 'preparing' | 'calling') => {
     setMenuTicket(null);
     handleStatusChange(ticketId, status).catch((err) =>
@@ -58,7 +119,6 @@ export const DisplayScreen: React.FC = () => {
     );
   };
 
-  // メニューから「削除する」
   const handleMenuDelete = (ticketId: string) => {
     setMenuTicket(null);
     handleDelete(ticketId).catch((err) =>
@@ -66,10 +126,74 @@ export const DisplayScreen: React.FC = () => {
     );
   };
 
+  const demoRequest = async (
+    path: string,
+    options: { method?: string; body?: unknown } = {}
+  ) => {
+    if (!apiKey) {
+      setDemoError('APIキー未設定です。「伝票入力へ」からAPIキーを設定してください。');
+      return null;
+    }
+
+    setDemoBusy(true);
+    setDemoError(null);
+    try {
+      const response = await fetch(path, {
+        method: options.method || 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'デモ操作に失敗しました');
+      if (typeof data.autoRunning === 'boolean') {
+        setDemoAutoRunning(data.autoRunning);
+      }
+      return data;
+    } catch (error) {
+      setDemoError(error instanceof Error ? error.message : 'デモ操作に失敗しました');
+      return null;
+    } finally {
+      setDemoBusy(false);
+    }
+  };
+
+  const addDemoTickets = (count: number) => {
+    void demoRequest('/api/demo/tickets', { body: { count } });
+  };
+
+  const toggleDemoAuto = () => {
+    void demoRequest(
+      demoAutoRunning ? '/api/demo/auto/stop' : '/api/demo/auto/start'
+    );
+  };
+
+  const deleteDemoTickets = () => {
+    if (!window.confirm('デモ用の伝票だけをすべて削除します。よろしいですか？')) return;
+    void demoRequest('/api/demo/tickets', { method: 'DELETE' });
+  };
+
   return (
-    <div style={styles.app}>
+    <div
+      className={congestion.critical ? 'congestion-critical' : undefined}
+      style={{ ...styles.app, backgroundColor: congestion.background }}
+    >
       <header style={styles.header}>
-        <h1 style={styles.title}>伝票表示画面</h1>
+        <div style={styles.titleArea}>
+          <h1 style={styles.title}>伝票表示画面</h1>
+          <div
+            style={{
+              ...styles.congestionBadge,
+              color: congestion.badge,
+              backgroundColor: 'rgba(255,255,255,0.94)',
+            }}
+          >
+            提供待ち {activeCount}件 ・ {congestion.label}
+          </div>
+        </div>
+
         <div style={styles.headerActions}>
           <button
             type="button"
@@ -84,6 +208,67 @@ export const DisplayScreen: React.FC = () => {
           </div>
         </div>
       </header>
+
+      <div style={styles.demoBar}>
+        <div style={styles.demoTitleWrap}>
+          <span
+            style={{
+              ...styles.demoModeBadge,
+              backgroundColor: demoEnabled ? '#7c3aed' : '#64748b',
+            }}
+          >
+            🧪 DEMO {demoEnabled ? 'ON' : 'OFF'}
+          </span>
+          {demoEnabled && (
+            <span style={styles.demoHelp}>
+              {apiKey ? 'APIキー設定済み' : 'APIキー未設定'}
+              {demoAutoRunning ? ' ・ 自動進行中' : ''}
+            </span>
+          )}
+        </div>
+
+        {demoEnabled && (
+          <div style={styles.demoActions}>
+            <button
+              className="kp-btn"
+              style={styles.demoButton}
+              disabled={demoBusy || !apiKey}
+              onClick={() => addDemoTickets(1)}
+            >
+              ＋ ランダム1件
+            </button>
+            <button
+              className="kp-btn"
+              style={styles.demoButton}
+              disabled={demoBusy || !apiKey}
+              onClick={() => addDemoTickets(10)}
+            >
+              ＋ 10件追加
+            </button>
+            <button
+              className="kp-btn"
+              style={{
+                ...styles.demoButton,
+                ...(demoAutoRunning ? styles.demoStopButton : styles.demoStartButton),
+              }}
+              disabled={demoBusy || !apiKey}
+              onClick={toggleDemoAuto}
+            >
+              {demoAutoRunning ? '■ 自動進行停止' : '▶ 自動進行開始'}
+            </button>
+            <button
+              className="kp-btn"
+              style={{ ...styles.demoButton, ...styles.demoDeleteButton }}
+              disabled={demoBusy || !apiKey}
+              onClick={deleteDemoTickets}
+            >
+              デモデータ削除
+            </button>
+          </div>
+        )}
+
+        {demoError && <div style={styles.demoError}>{demoError}</div>}
+      </div>
 
       <div className="display-main" style={styles.mainContent}>
         <TicketDisplay
@@ -108,6 +293,9 @@ export const DisplayScreen: React.FC = () => {
         <TicketMenu
           ticket={menuTicket}
           onMove={handleMenuMove}
+          onRecall={(ticketId, updateCalledAt) => {
+            void handleRecall(ticketId, updateCalledAt);
+          }}
           onDelete={handleMenuDelete}
           onClose={() => setMenuTicket(null)}
         />
@@ -121,23 +309,36 @@ const styles: { [key: string]: React.CSSProperties } = {
     height: '100vh',
     display: 'flex',
     flexDirection: 'column',
-    backgroundColor: 'var(--bg)',
+    transition: 'background-color 0.35s ease',
   },
   header: {
     background: 'var(--header-bg)',
     color: 'white',
-    padding: '16px 28px',
+    padding: '14px 24px',
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
     boxShadow: 'var(--shadow-md)',
-    zIndex: 1,
+    zIndex: 2,
+  },
+  titleArea: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '14px',
+    flexWrap: 'wrap',
   },
   title: {
     margin: 0,
     fontSize: '22px',
     fontWeight: 800,
     letterSpacing: '0.04em',
+  },
+  congestionBadge: {
+    padding: '6px 11px',
+    borderRadius: '999px',
+    fontSize: '13px',
+    fontWeight: 900,
+    boxShadow: '0 1px 4px rgba(0,0,0,0.16)',
   },
   headerActions: {
     display: 'flex',
@@ -161,8 +362,75 @@ const styles: { [key: string]: React.CSSProperties } = {
     alignItems: 'center',
     color: 'rgba(255,255,255,0.9)',
   },
+  demoBar: {
+    minHeight: '58px',
+    padding: '9px 18px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+    flexWrap: 'wrap',
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderBottom: '1px solid rgba(148,163,184,0.35)',
+    boxShadow: '0 2px 8px rgba(15,23,42,0.06)',
+    zIndex: 1,
+  },
+  demoTitleWrap: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '9px',
+  },
+  demoModeBadge: {
+    padding: '6px 10px',
+    borderRadius: '999px',
+    color: '#fff',
+    fontSize: '12px',
+    fontWeight: 900,
+    letterSpacing: '0.05em',
+  },
+  demoHelp: {
+    color: 'var(--text-muted)',
+    fontSize: '12px',
+    fontWeight: 700,
+  },
+  demoActions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    flexWrap: 'wrap',
+  },
+  demoButton: {
+    padding: '8px 11px',
+    borderRadius: '9px',
+    border: '1px solid #cbd5e1',
+    backgroundColor: '#fff',
+    color: '#334155',
+    fontSize: '12px',
+    fontWeight: 800,
+    cursor: 'pointer',
+  },
+  demoStartButton: {
+    color: '#166534',
+    borderColor: '#86efac',
+    backgroundColor: '#f0fdf4',
+  },
+  demoStopButton: {
+    color: '#9a3412',
+    borderColor: '#fdba74',
+    backgroundColor: '#fff7ed',
+  },
+  demoDeleteButton: {
+    color: '#b91c1c',
+    borderColor: '#fecaca',
+    backgroundColor: '#fff1f2',
+  },
+  demoError: {
+    color: '#b91c1c',
+    fontSize: '12px',
+    fontWeight: 800,
+  },
   mainContent: {
     flex: 1,
+    minHeight: 0,
     display: 'flex',
     gap: '20px',
     padding: '20px',
