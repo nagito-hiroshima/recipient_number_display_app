@@ -19,4 +19,7 @@ export interface WebSocketMessage {
     | 'ticket:deleted'
     | 'init';
   data: Ticket | Ticket[];
+  // ticket:updated を通常呼び出しと再呼び出しで共通利用しつつ、
+  // 表示側で読み上げ文言だけ判別するための一時フラグ。
+  recall?: boolean;
 }
