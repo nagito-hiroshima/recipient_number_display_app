@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useWebSocket } from './useWebSocket';
 import { TicketDisplay } from './TicketDisplay';
@@ -6,6 +6,8 @@ import { TicketMenu } from './TicketMenu';
 import { Ticket } from './types';
 
 const API_KEY_STORAGE_KEY = 'apiToken';
+const DEMO_UNLOCK_TAPS = 5;
+const DEMO_UNLOCK_MAX_GAP_MS = 1200;
 
 export const DisplayScreen: React.FC = () => {
   const navigate = useNavigate();
@@ -17,6 +19,11 @@ export const DisplayScreen: React.FC = () => {
   const [demoAutoRunning, setDemoAutoRunning] = useState(false);
   const [demoBusy, setDemoBusy] = useState(false);
   const [demoError, setDemoError] = useState<string | null>(null);
+  const [demoUnlockProgress, setDemoUnlockProgress] = useState(0);
+
+  const demoTapCount = useRef(0);
+  const lastDemoTapAt = useRef(0);
+  const demoTapResetTimer = useRef<number | null>(null);
 
   const apiKey = localStorage.getItem(API_KEY_STORAGE_KEY)?.trim() || '';
 
@@ -46,7 +53,13 @@ export const DisplayScreen: React.FC = () => {
     if (!socket) return;
 
     const handleDemoStatus = (data: { enabled?: boolean; autoRunning?: boolean }) => {
-      if (typeof data.enabled === 'boolean') setDemoEnabled(data.enabled);
+      if (typeof data.enabled === 'boolean') {
+        setDemoEnabled(data.enabled);
+        if (data.enabled) {
+          demoTapCount.current = 0;
+          setDemoUnlockProgress(0);
+        }
+      }
       if (typeof data.autoRunning === 'boolean') setDemoAutoRunning(data.autoRunning);
     };
 
@@ -55,6 +68,14 @@ export const DisplayScreen: React.FC = () => {
       socket.off('demo:status', handleDemoStatus);
     };
   }, [socket]);
+
+  useEffect(() => {
+    return () => {
+      if (demoTapResetTimer.current !== null) {
+        window.clearTimeout(demoTapResetTimer.current);
+      }
+    };
+  }, []);
 
   const activeCount = useMemo(
     () => tickets.filter((ticket) => ticket.status === 'preparing' || ticket.status === 'calling').length,
@@ -174,22 +195,68 @@ export const DisplayScreen: React.FC = () => {
     }
   };
 
-  const toggleDemoEnabled = () => {
+  // DEMO ON → OFF は通常操作で可能。
+  // OFF → ON はヘッダー5回連続タップに限定して誤操作を防ぐ。
+  const disableDemoMode = () => {
+    if (!demoEnabled) return;
     if (!apiKey) {
       setDemoError('APIキー未設定です。「伝票入力へ」からAPIキーを設定してください。');
       return;
     }
 
-    if (demoEnabled) {
-      const message = demoAutoRunning
-        ? 'デモモードをOFFにします。自動進行も停止します。デモ伝票は削除されません。よろしいですか？'
-        : 'デモモードをOFFにします。デモ伝票は削除されません。よろしいですか？';
-      if (!window.confirm(message)) return;
+    const message = demoAutoRunning
+      ? 'デモモードをOFFにします。自動進行も停止します。デモ伝票は削除されません。よろしいですか？'
+      : 'デモモードをOFFにします。デモ伝票は削除されません。よろしいですか？';
+    if (!window.confirm(message)) return;
+
+    demoTapCount.current = 0;
+    setDemoUnlockProgress(0);
+    void demoRequest('/api/demo/enabled', { body: { enabled: false } });
+  };
+
+  const handleHeaderTap = (event: React.MouseEvent<HTMLElement>) => {
+    if (demoEnabled || demoBusy) return;
+
+    // ヘッダー内のナビゲーションボタンなどは解除操作として数えない。
+    const target = event.target as HTMLElement;
+    if (target.closest('button, a, input, select, textarea, [role="button"]')) return;
+
+    const currentTime = Date.now();
+    if (
+      lastDemoTapAt.current === 0 ||
+      currentTime - lastDemoTapAt.current > DEMO_UNLOCK_MAX_GAP_MS
+    ) {
+      demoTapCount.current = 1;
+    } else {
+      demoTapCount.current += 1;
+    }
+    lastDemoTapAt.current = currentTime;
+    setDemoUnlockProgress(demoTapCount.current);
+
+    if (demoTapResetTimer.current !== null) {
+      window.clearTimeout(demoTapResetTimer.current);
     }
 
-    void demoRequest('/api/demo/enabled', {
-      body: { enabled: !demoEnabled },
-    });
+    if (demoTapCount.current >= DEMO_UNLOCK_TAPS) {
+      demoTapCount.current = 0;
+      lastDemoTapAt.current = 0;
+      setDemoUnlockProgress(0);
+
+      if (!apiKey) {
+        setDemoError('デモモードをONにするにはAPIキーが必要です。「伝票入力へ」から設定してください。');
+        return;
+      }
+
+      void demoRequest('/api/demo/enabled', { body: { enabled: true } });
+      return;
+    }
+
+    demoTapResetTimer.current = window.setTimeout(() => {
+      demoTapCount.current = 0;
+      lastDemoTapAt.current = 0;
+      setDemoUnlockProgress(0);
+      demoTapResetTimer.current = null;
+    }, DEMO_UNLOCK_MAX_GAP_MS);
   };
 
   const addDemoTickets = (count: number) => {
@@ -212,7 +279,11 @@ export const DisplayScreen: React.FC = () => {
       className={congestion.critical ? 'congestion-critical' : undefined}
       style={{ ...styles.app, backgroundColor: congestion.background }}
     >
-      <header style={styles.header}>
+      <header
+        style={styles.header}
+        onClick={handleHeaderTap}
+        title={!demoEnabled ? 'DEMO ON: ヘッダーを5回連続タップ' : undefined}
+      >
         <div style={styles.titleArea}>
           <h1 style={styles.title}>伝票表示画面</h1>
           <div
@@ -224,6 +295,11 @@ export const DisplayScreen: React.FC = () => {
           >
             提供待ち {activeCount}件 ・ {congestion.label}
           </div>
+          {!demoEnabled && demoUnlockProgress > 0 && (
+            <div style={styles.unlockProgress}>
+              DEMO解除 {demoUnlockProgress}/{DEMO_UNLOCK_TAPS}
+            </div>
+          )}
         </div>
 
         <div style={styles.headerActions}>
@@ -243,23 +319,31 @@ export const DisplayScreen: React.FC = () => {
 
       <div style={styles.demoBar}>
         <div style={styles.demoTitleWrap}>
-          <button
-            type="button"
-            className="kp-btn"
-            style={{
-              ...styles.demoModeToggle,
-              backgroundColor: demoEnabled ? '#7c3aed' : '#64748b',
-            }}
-            disabled={demoBusy || !apiKey}
-            onClick={toggleDemoEnabled}
-            title={apiKey ? 'デモモードをON/OFF' : 'APIキーを設定してください'}
-          >
-            🧪 DEMO {demoEnabled ? 'ON' : 'OFF'}
-            <span style={styles.demoToggleHint}>切替</span>
-          </button>
+          {demoEnabled ? (
+            <button
+              type="button"
+              className="kp-btn"
+              style={{ ...styles.demoModeToggle, backgroundColor: '#7c3aed' }}
+              disabled={demoBusy || !apiKey}
+              onClick={disableDemoMode}
+              title={apiKey ? 'デモモードをOFF' : 'APIキーを設定してください'}
+            >
+              🧪 DEMO ON
+              <span style={styles.demoToggleHint}>OFFにする</span>
+            </button>
+          ) : (
+            <div style={{ ...styles.demoModeToggle, backgroundColor: '#64748b' }}>
+              🧪 DEMO OFF
+              <span style={styles.demoToggleHint}>誤操作防止</span>
+            </div>
+          )}
           <span style={styles.demoHelp}>
             {apiKey ? 'APIキー設定済み' : 'APIキー未設定'}
-            {demoAutoRunning ? ' ・ 自動進行中' : ''}
+            {demoEnabled
+              ? demoAutoRunning
+                ? ' ・ 自動進行中'
+                : ''
+              : ' ・ ONにするにはヘッダーを5回連続タップ'}
           </span>
         </div>
 
@@ -376,6 +460,15 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontWeight: 900,
     boxShadow: '0 1px 4px rgba(0,0,0,0.16)',
   },
+  unlockProgress: {
+    padding: '5px 9px',
+    borderRadius: '999px',
+    backgroundColor: 'rgba(124,58,237,0.9)',
+    color: '#fff',
+    fontSize: '11px',
+    fontWeight: 900,
+    letterSpacing: '0.03em',
+  },
   headerActions: {
     display: 'flex',
     alignItems: 'center',
@@ -414,6 +507,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     display: 'flex',
     alignItems: 'center',
     gap: '9px',
+    flexWrap: 'wrap',
   },
   demoModeToggle: {
     border: 'none',
@@ -423,7 +517,6 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '12px',
     fontWeight: 900,
     letterSpacing: '0.05em',
-    cursor: 'pointer',
     display: 'flex',
     alignItems: 'center',
     gap: '7px',
