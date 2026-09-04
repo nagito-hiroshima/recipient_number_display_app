@@ -11,7 +11,7 @@ export const useWebSocket = (url?: string) => {
     // 同一オリジンに接続（プロキシ経由）
     const socketUrl = url || 'https://recipient-number-display-app.onrender.com';
     console.log('Connecting to Socket.IO at:', socketUrl);
-    
+
     const newSocket = io(socketUrl, {
       reconnection: true,
       reconnectionDelay: 1000,
@@ -43,7 +43,8 @@ export const useWebSocket = (url?: string) => {
           case 'ticket:created':
             setTickets((prev) => [...prev, message.data as Ticket]);
             break;
-          case 'ticket:updated': {
+          case 'ticket:updated':
+          case 'ticket:recalled': {
             const updatedTicket = message.data as Ticket;
             setTickets((prev) =>
               prev.map((t) => (t.id === updatedTicket.id ? updatedTicket : t))
@@ -80,4 +81,3 @@ export const useWebSocket = (url?: string) => {
 
   return { socket, tickets, isConnected };
 };
-
