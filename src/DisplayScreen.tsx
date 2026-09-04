@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useWebSocket } from './useWebSocket';
 import { TicketDisplay } from './TicketDisplay';
 import { TicketMenu } from './TicketMenu';
 import { Ticket } from './types';
 
 export const DisplayScreen: React.FC = () => {
+  const navigate = useNavigate();
   const { tickets, isConnected } = useWebSocket();
   const [isLoading, setIsLoading] = useState(false);
   // 長押しメニューの対象伝票（null のとき非表示）
@@ -68,9 +70,18 @@ export const DisplayScreen: React.FC = () => {
     <div style={styles.app}>
       <header style={styles.header}>
         <h1 style={styles.title}>伝票表示画面</h1>
-        <div style={styles.connectionStatus}>
-          <span className={`status-dot ${isConnected ? 'status-dot--on' : 'status-dot--off'}`} />
-          {isConnected ? '接続中' : '再接続中...'}
+        <div style={styles.headerActions}>
+          <button
+            type="button"
+            style={styles.navButton}
+            onClick={() => navigate('/number-input')}
+          >
+            伝票入力へ
+          </button>
+          <div style={styles.connectionStatus}>
+            <span className={`status-dot ${isConnected ? 'status-dot--on' : 'status-dot--off'}`} />
+            {isConnected ? '接続中' : '再接続中...'}
+          </div>
         </div>
       </header>
 
@@ -127,6 +138,21 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '22px',
     fontWeight: 800,
     letterSpacing: '0.04em',
+  },
+  headerActions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '14px',
+  },
+  navButton: {
+    border: '1px solid rgba(255,255,255,0.35)',
+    background: 'rgba(255,255,255,0.12)',
+    color: '#fff',
+    borderRadius: '10px',
+    padding: '9px 14px',
+    fontSize: '14px',
+    fontWeight: 700,
+    cursor: 'pointer',
   },
   connectionStatus: {
     fontSize: '14px',
