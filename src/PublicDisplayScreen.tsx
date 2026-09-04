@@ -54,14 +54,12 @@ function speakTicket(ticket: Ticket, isRecall = false): void {
     }
     synth.resume();
 
+    // デモ伝票は画面上では D123 のように区別するが、
+    // 音声案内は本番と同じ文面・番号形式で読み上げる。
     const spokenNumber = ticket.demo ? ticket.id.replace(/^D/i, '') : ticket.id;
-    const message = ticket.demo
-      ? isRecall
-        ? `再度、デモ番号 ${spokenNumber} を呼び出します。`
-        : `デモ番号 ${spokenNumber} を呼び出します。`
-      : isRecall
-        ? `再度お呼び出しします。番号 ${spokenNumber} のお客様、受け取り口までお越しください。`
-        : `お待たせしました。番号 ${spokenNumber} のお客様、受け取り口までお越しください。`;
+    const message = isRecall
+      ? `再度お呼び出しします。番号 ${spokenNumber} のお客様、受け取り口までお越しください。`
+      : `お待たせしました。番号 ${spokenNumber} のお客様、受け取り口までお越しください。`;
 
     const utterance = new SpeechSynthesisUtterance(message);
     activeUtterance = utterance;
