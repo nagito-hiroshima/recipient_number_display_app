@@ -20,10 +20,12 @@ export const DisplayScreen: React.FC = () => {
   const [demoBusy, setDemoBusy] = useState(false);
   const [demoError, setDemoError] = useState<string | null>(null);
   const [demoUnlockProgress, setDemoUnlockProgress] = useState(0);
+  const [recallNotice, setRecallNotice] = useState<string | null>(null);
 
   const demoTapCount = useRef(0);
   const lastDemoTapAt = useRef(0);
   const demoTapResetTimer = useRef<number | null>(null);
+  const recallNoticeTimer = useRef<number | null>(null);
 
   const apiKey = localStorage.getItem(API_KEY_STORAGE_KEY)?.trim() || '';
 
@@ -48,7 +50,6 @@ export const DisplayScreen: React.FC = () => {
       });
   }, []);
 
-  // 別の管理画面からON/OFFされた場合も即時反映する。
   useEffect(() => {
     if (!socket) return;
 
@@ -74,11 +75,17 @@ export const DisplayScreen: React.FC = () => {
       if (demoTapResetTimer.current !== null) {
         window.clearTimeout(demoTapResetTimer.current);
       }
+      if (recallNoticeTimer.current !== null) {
+        window.clearTimeout(recallNoticeTimer.current);
+      }
     };
   }, []);
 
   const activeCount = useMemo(
-    () => tickets.filter((ticket) => ticket.status === 'preparing' || ticket.status === 'calling').length,
+    () =>
+      tickets.filter(
+        (ticket) => ticket.status === 'preparing' || ticket.status === 'calling'
+      ).length,
     [tickets]
   );
 
@@ -94,6 +101,17 @@ export const DisplayScreen: React.FC = () => {
     }
     return { label: 'かなり混雑', background: '#fecaca', badge: '#991b1b', critical: true };
   }, [activeCount]);
+
+  const showRecallNotice = (message: string) => {
+    setRecallNotice(message);
+    if (recallNoticeTimer.current !== null) {
+      window.clearTimeout(recallNoticeTimer.current);
+    }
+    recallNoticeTimer.current = window.setTimeout(() => {
+      setRecallNotice(null);
+      recallNoticeTimer.current = null;
+    }, 3500);
+  };
 
   const handleStatusChange = async (ticketId: string, newStatus: string) => {
     setIsLoading(true);
@@ -124,7 +142,9 @@ export const DisplayScreen: React.FC = () => {
 
   const handleRecall = async (ticketId: string, updateCalledAt: boolean) => {
     if (!apiKey) {
-      window.alert('再呼び出しにはAPIキーが必要です。先に「伝票入力へ」からAPIキーを設定してください。');
+      window.alert(
+        '再呼び出しにはAPIキーが必要です。先に「伝票入力へ」からAPIキーを設定してください。'
+      );
       return;
     }
 
@@ -138,13 +158,17 @@ export const DisplayScreen: React.FC = () => {
         body: JSON.stringify({ updateCalledAt }),
       });
 
+      const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
         throw new Error(data.error || '再呼び出しに失敗しました');
       }
+
       setMenuTicket(null);
+      showRecallNotice(`🔊 ${ticketId}番を再呼び出ししました`);
     } catch (error) {
-      window.alert(error instanceof Error ? error.message : '再呼び出しに失敗しました');
+      const message = error instanceof Error ? error.message : '再呼び出しに失敗しました';
+      console.error('Recall failed:', error);
+      window.alert(message);
     }
   };
 
@@ -195,8 +219,6 @@ export const DisplayScreen: React.FC = () => {
     }
   };
 
-  // DEMO ON → OFF は通常操作で可能。
-  // OFF → ON はヘッダー5回連続タップに限定して誤操作を防ぐ。
   const disableDemoMode = () => {
     if (!demoEnabled) return;
     if (!apiKey) {
@@ -214,10 +236,10 @@ export const DisplayScreen: React.FC = () => {
     void demoRequest('/api/demo/enabled', { body: { enabled: false } });
   };
 
+  // 本番モードからDEMOを有効化する操作は、ヘッダー5回連続タップだけに限定する。
   const handleHeaderTap = (event: React.MouseEvent<HTMLElement>) => {
     if (demoEnabled || demoBusy) return;
 
-    // ヘッダー内のナビゲーションボタンなどは解除操作として数えない。
     const target = event.target as HTMLElement;
     if (target.closest('button, a, input, select, textarea, [role="button"]')) return;
 
@@ -230,6 +252,7 @@ export const DisplayScreen: React.FC = () => {
     } else {
       demoTapCount.current += 1;
     }
+
     lastDemoTapAt.current = currentTime;
     setDemoUnlockProgress(demoTapCount.current);
 
@@ -243,7 +266,9 @@ export const DisplayScreen: React.FC = () => {
       setDemoUnlockProgress(0);
 
       if (!apiKey) {
-        setDemoError('デモモードをONにするにはAPIキーが必要です。「伝票入力へ」から設定してください。');
+        window.alert(
+          'デモモードをONにするにはAPIキーが必要です。「伝票入力へ」から設定してください。'
+        );
         return;
       }
 
@@ -282,7 +307,7 @@ export const DisplayScreen: React.FC = () => {
       <header
         style={styles.header}
         onClick={handleHeaderTap}
-        title={!demoEnabled ? 'DEMO ON: ヘッダーを5回連続タップ' : undefined}
+        title={!demoEnabled ? 'デモモードを有効化するにはヘッダーを5回連続タップ' : undefined}
       >
         <div style={styles.titleArea}>
           <h1 style={styles.title}>伝票表示画面</h1>
@@ -295,11 +320,20 @@ export const DisplayScreen: React.FC = () => {
           >
             提供待ち {activeCount}件 ・ {congestion.label}
           </div>
+          <div
+            style={{
+              ...styles.modeBadge,
+              backgroundColor: demoEnabled ? '#7c3aed' : '#15803d',
+            }}
+          >
+            {demoEnabled ? '🧪 デモモード' : '● 本番モード'}
+          </div>
           {!demoEnabled && demoUnlockProgress > 0 && (
             <div style={styles.unlockProgress}>
-              DEMO解除 {demoUnlockProgress}/{DEMO_UNLOCK_TAPS}
+              DEMO {demoUnlockProgress}/{DEMO_UNLOCK_TAPS}
             </div>
           )}
+          {recallNotice && <div style={styles.recallNotice}>{recallNotice}</div>}
         </div>
 
         <div style={styles.headerActions}>
@@ -311,15 +345,17 @@ export const DisplayScreen: React.FC = () => {
             伝票入力へ
           </button>
           <div style={styles.connectionStatus}>
-            <span className={`status-dot ${isConnected ? 'status-dot--on' : 'status-dot--off'}`} />
+            <span
+              className={`status-dot ${isConnected ? 'status-dot--on' : 'status-dot--off'}`}
+            />
             {isConnected ? '接続中' : '再接続中...'}
           </div>
         </div>
       </header>
 
-      <div style={styles.demoBar}>
-        <div style={styles.demoTitleWrap}>
-          {demoEnabled ? (
+      {demoEnabled && (
+        <div style={styles.demoBar}>
+          <div style={styles.demoTitleWrap}>
             <button
               type="button"
               className="kp-btn"
@@ -331,23 +367,12 @@ export const DisplayScreen: React.FC = () => {
               🧪 DEMO ON
               <span style={styles.demoToggleHint}>OFFにする</span>
             </button>
-          ) : (
-            <div style={{ ...styles.demoModeToggle, backgroundColor: '#64748b' }}>
-              🧪 DEMO OFF
-              <span style={styles.demoToggleHint}>誤操作防止</span>
-            </div>
-          )}
-          <span style={styles.demoHelp}>
-            {apiKey ? 'APIキー設定済み' : 'APIキー未設定'}
-            {demoEnabled
-              ? demoAutoRunning
-                ? ' ・ 自動進行中'
-                : ''
-              : ' ・ ONにするにはヘッダーを5回連続タップ'}
-          </span>
-        </div>
+            <span style={styles.demoHelp}>
+              {apiKey ? 'APIキー設定済み' : 'APIキー未設定'}
+              {demoAutoRunning ? ' ・ 自動進行中' : ''}
+            </span>
+          </div>
 
-        {demoEnabled && (
           <div style={styles.demoActions}>
             <button
               className="kp-btn"
@@ -385,10 +410,10 @@ export const DisplayScreen: React.FC = () => {
               デモデータ削除
             </button>
           </div>
-        )}
 
-        {demoError && <div style={styles.demoError}>{demoError}</div>}
-      </div>
+          {demoError && <div style={styles.demoError}>{demoError}</div>}
+        </div>
+      )}
 
       <div className="display-main" style={styles.mainContent}>
         <TicketDisplay
@@ -444,7 +469,7 @@ const styles: { [key: string]: React.CSSProperties } = {
   titleArea: {
     display: 'flex',
     alignItems: 'center',
-    gap: '14px',
+    gap: '10px',
     flexWrap: 'wrap',
   },
   title: {
@@ -460,6 +485,14 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontWeight: 900,
     boxShadow: '0 1px 4px rgba(0,0,0,0.16)',
   },
+  modeBadge: {
+    padding: '6px 10px',
+    borderRadius: '999px',
+    color: '#fff',
+    fontSize: '12px',
+    fontWeight: 900,
+    letterSpacing: '0.03em',
+  },
   unlockProgress: {
     padding: '5px 9px',
     borderRadius: '999px',
@@ -468,6 +501,14 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '11px',
     fontWeight: 900,
     letterSpacing: '0.03em',
+  },
+  recallNotice: {
+    padding: '5px 10px',
+    borderRadius: '999px',
+    backgroundColor: 'rgba(245,158,11,0.95)',
+    color: '#fff',
+    fontSize: '12px',
+    fontWeight: 900,
   },
   headerActions: {
     display: 'flex',
@@ -520,6 +561,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     display: 'flex',
     alignItems: 'center',
     gap: '7px',
+    cursor: 'pointer',
   },
   demoToggleHint: {
     padding: '2px 6px',
