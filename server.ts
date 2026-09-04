@@ -232,16 +232,10 @@ app.post('/api/tickets/:id/recall', authenticateToken, (req, res) => {
     const recallId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const recalledAt = new Date().toISOString();
 
-    // 状態同期用イベント。既存クライアントとの互換性のため残す。
-    broadcastUpdate({ type: 'ticket:recalled', data: ticket });
-
-    // 読み上げ・強調表示専用イベント。
-    // ステータス更新イベントと分離することで再呼び出しを確実に判別する。
-    io.emit('ticket:recall', {
-      ticket,
-      recallId,
-      recalledAt,
-    });
+    // 再呼び出しも、通常の「呼び出し中へ移動」と同じ ticket:updated 経路を使う。
+    // /display 側で実績のあるチャイム・読み上げ処理をそのまま再実行することで、
+    // 専用イベントや SpeechSynthesis の二重 cancel による再生失敗を避ける。
+    broadcastUpdate({ type: 'ticket:updated', data: ticket });
 
     console.log(`Ticket recalled: ${ticket.id} (${recallId})`);
     res.json({ success: true, ticket, recallId, recalledAt });
