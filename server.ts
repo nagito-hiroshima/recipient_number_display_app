@@ -13,8 +13,11 @@ dotenv.config();
 const app: Express = express();
 const PORT = Number(process.env.PORT) || 3000;
 const API_TOKEN = process.env.API_TOKEN;
-const DEMO_MODE_ENABLED =
+
+// 環境変数は「初期値」として使用し、その後はWeb UIから変更可能。
+const DEMO_MODE_DEFAULT_ENABLED =
   (process.env.DEMO_MODE_ENABLED || 'true').trim().toLowerCase() !== 'false';
+let demoModeEnabled = DEMO_MODE_DEFAULT_ENABLED;
 
 if (!API_TOKEN) {
   console.error('Error: API_TOKEN is not set in .env file');
@@ -25,7 +28,6 @@ const SQUARE_WEBHOOK_SIGNATURE_KEY = process.env.SQUARE_WEBHOOK_SIGNATURE_KEY;
 const SQUARE_WEBHOOK_URL = process.env.SQUARE_WEBHOOK_URL;
 
 app.use(cros());
-// 署名検証のためWebhookの生ボディを保持する
 app.use(
   express.json({
     verify: (req: Request & { rawBody?: Buffer }, _res, buf) => {
@@ -35,7 +37,6 @@ app.use(
 );
 app.use(express.static('dist/client'));
 
-// Bearer token authentication middleware
 function authenticateToken(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
@@ -52,7 +53,7 @@ function authenticateToken(req: Request, res: Response, next: NextFunction) {
 }
 
 function requireDemoMode(_req: Request, res: Response, next: NextFunction) {
-  if (!DEMO_MODE_ENABLED) {
+  if (!demoModeEnabled) {
     return res.status(403).json({ error: 'Demo mode is disabled' });
   }
   next();
@@ -73,6 +74,13 @@ function broadcastUpdate(message: WebSocketMessage) {
   io.emit('ticket:update', message);
 }
 
+function broadcastDemoStatus() {
+  io.emit('demo:status', {
+    enabled: demoModeEnabled,
+    autoRunning: demoTimer !== null,
+  });
+}
+
 function createRandomDemoTicket(): Ticket {
   for (let attempt = 0; attempt < 2000; attempt++) {
     const number = Math.floor(Math.random() * 900) + 100;
@@ -90,7 +98,6 @@ function runDemoStep(): void {
   try {
     const demoTickets = db.getAllTickets().filter((ticket) => ticket.demo);
 
-    // 先に前回呼び出した1件を完了へ送る
     const calling = demoTickets.find((ticket) => ticket.status === 'calling');
     if (calling) {
       const completed = db.updateTicketStatus(calling.id, 'completed');
@@ -99,7 +106,6 @@ function runDemoStep(): void {
       }
     }
 
-    // 次の調理中1件を呼び出しへ送る
     const preparing = demoTickets.find((ticket) => ticket.status === 'preparing');
     if (preparing) {
       const called = db.updateTicketStatus(preparing.id, 'calling');
@@ -128,6 +134,10 @@ io.on('connection', (socket: Socket) => {
       type: 'init',
       data: tickets,
     } as WebSocketMessage);
+    socket.emit('demo:status', {
+      enabled: demoModeEnabled,
+      autoRunning: demoTimer !== null,
+    });
   } catch (err) {
     console.error('Error sending initial data:', err);
   }
@@ -141,7 +151,9 @@ io.on('connection', (socket: Socket) => {
   });
 });
 
-// API endpoints
+// ------------------------------------------------------------------
+// 伝票 API
+// ------------------------------------------------------------------
 app.post('/api/tickets', authenticateToken, (req, res) => {
   try {
     const { id } = req.body;
@@ -157,11 +169,7 @@ app.post('/api/tickets', authenticateToken, (req, res) => {
     }
 
     const ticket = db.createTicket(id);
-    broadcastUpdate({
-      type: 'ticket:created',
-      data: ticket,
-    });
-
+    broadcastUpdate({ type: 'ticket:created', data: ticket });
     res.json(ticket);
   } catch (err) {
     console.error('Error creating ticket:', err);
@@ -171,8 +179,7 @@ app.post('/api/tickets', authenticateToken, (req, res) => {
 
 app.get('/api/tickets', authenticateToken, (req, res) => {
   try {
-    const tickets = db.getAllTickets();
-    res.json(tickets);
+    res.json(db.getAllTickets());
   } catch (err) {
     console.error('Error fetching tickets:', err);
     res.status(500).json({ error: 'Failed to fetch tickets' });
@@ -188,16 +195,15 @@ app.patch('/api/tickets/:id', (req, res) => {
       return res.status(400).json({ error: 'Invalid status' });
     }
 
-    const ticket = db.updateTicketStatus(id, status);
+    const ticket = db.updateTicketStatus(
+      id,
+      status as 'preparing' | 'calling' | 'completed'
+    );
     if (!ticket) {
       return res.status(404).json({ error: 'Ticket not found' });
     }
 
-    broadcastUpdate({
-      type: 'ticket:updated',
-      data: ticket,
-    });
-
+    broadcastUpdate({ type: 'ticket:updated', data: ticket });
     res.json(ticket);
   } catch (err) {
     console.error('Error updating ticket:', err);
@@ -205,7 +211,6 @@ app.patch('/api/tickets/:id', (req, res) => {
   }
 });
 
-// 呼び出し中の番号を再度、表示画面へ通知する。
 app.post('/api/tickets/:id/recall', authenticateToken, (req, res) => {
   try {
     const { id } = req.params;
@@ -236,12 +241,7 @@ app.delete('/api/tickets/:id', (req, res) => {
   try {
     const { id } = req.params;
     db.deleteTicket(id);
-
-    broadcastUpdate({
-      type: 'ticket:deleted',
-      data: { id } as any,
-    });
-
+    broadcastUpdate({ type: 'ticket:deleted', data: { id } as any });
     res.json({ success: true });
   } catch (err) {
     console.error('Error deleting ticket:', err);
@@ -254,9 +254,37 @@ app.delete('/api/tickets/:id', (req, res) => {
 // ------------------------------------------------------------------
 app.get('/api/demo/status', (_req, res) => {
   res.json({
-    enabled: DEMO_MODE_ENABLED,
+    enabled: demoModeEnabled,
     autoRunning: demoTimer !== null,
   });
+});
+
+// Web UI からデモモードそのものをON/OFFする。
+// APIキー必須。OFFにすると自動進行は停止するがデモ伝票は残す。
+app.post('/api/demo/enabled', authenticateToken, (req, res) => {
+  try {
+    const enabled = req.body?.enabled;
+    if (typeof enabled !== 'boolean') {
+      return res.status(400).json({ error: 'enabled must be boolean' });
+    }
+
+    demoModeEnabled = enabled;
+    db.setSetting('demo_mode_enabled', enabled ? 'true' : 'false');
+
+    if (!demoModeEnabled) {
+      stopDemoAutoProgression();
+    }
+
+    broadcastDemoStatus();
+    res.json({
+      success: true,
+      enabled: demoModeEnabled,
+      autoRunning: demoTimer !== null,
+    });
+  } catch (err) {
+    console.error('Error changing demo mode:', err);
+    res.status(500).json({ error: 'Failed to change demo mode' });
+  }
 });
 
 app.post('/api/demo/tickets', authenticateToken, requireDemoMode, (req, res) => {
@@ -273,7 +301,7 @@ app.post('/api/demo/tickets', authenticateToken, requireDemoMode, (req, res) => 
       broadcastUpdate({ type: 'ticket:created', data: ticket });
     }
 
-    res.json({ success: true, tickets: created });
+    res.json({ success: true, enabled: demoModeEnabled, tickets: created });
   } catch (err) {
     console.error('Error creating demo tickets:', err);
     res.status(500).json({ error: 'Failed to create demo tickets' });
@@ -282,16 +310,17 @@ app.post('/api/demo/tickets', authenticateToken, requireDemoMode, (req, res) => 
 
 app.post('/api/demo/auto/start', authenticateToken, requireDemoMode, (_req, res) => {
   if (!demoTimer) {
-    // 開始直後にも1ステップ進め、その後4秒ごとに進行する
     runDemoStep();
     demoTimer = setInterval(runDemoStep, 4000);
   }
-  res.json({ success: true, autoRunning: true });
+  broadcastDemoStatus();
+  res.json({ success: true, enabled: demoModeEnabled, autoRunning: true });
 });
 
 app.post('/api/demo/auto/stop', authenticateToken, requireDemoMode, (_req, res) => {
   stopDemoAutoProgression();
-  res.json({ success: true, autoRunning: false });
+  broadcastDemoStatus();
+  res.json({ success: true, enabled: demoModeEnabled, autoRunning: false });
 });
 
 app.delete('/api/demo/tickets', authenticateToken, requireDemoMode, (_req, res) => {
@@ -301,14 +330,22 @@ app.delete('/api/demo/tickets', authenticateToken, requireDemoMode, (_req, res) 
     for (const id of deletedIds) {
       broadcastUpdate({ type: 'ticket:deleted', data: { id } as any });
     }
-    res.json({ success: true, deleted: deletedIds.length, autoRunning: false });
+    broadcastDemoStatus();
+    res.json({
+      success: true,
+      enabled: demoModeEnabled,
+      deleted: deletedIds.length,
+      autoRunning: false,
+    });
   } catch (err) {
     console.error('Error deleting demo tickets:', err);
     res.status(500).json({ error: 'Failed to delete demo tickets' });
   }
 });
 
-// Square Webhook: 決済完了（payment.updated / payment.created）で伝票を自動発行
+// ------------------------------------------------------------------
+// Square Webhook
+// ------------------------------------------------------------------
 app.post('/api/square/webhook', async (req: Request & { rawBody?: Buffer }, res) => {
   try {
     if (!SQUARE_WEBHOOK_SIGNATURE_KEY || !SQUARE_WEBHOOK_URL) {
@@ -369,7 +406,6 @@ app.post('/api/square/webhook', async (req: Request & { rawBody?: Buffer }, res)
     }
 
     const fromMobile = !!payment?.billing_address;
-
     const ticket = db.createTicket(displayId, orderId, fromMobile);
     broadcastUpdate({ type: 'ticket:created', data: ticket });
 
@@ -381,18 +417,24 @@ app.post('/api/square/webhook', async (req: Request & { rawBody?: Buffer }, res)
   }
 });
 
-// SPA フォールバック: API以外のGETはReactアプリのindex.htmlを返す
 app.get('*', (req, res) => {
   res.sendFile(path.resolve('dist/client/index.html'));
 });
 
-// Initialize database and start server
 db.initialize()
   .then(() => {
+    const savedDemoMode = db.getSetting('demo_mode_enabled');
+    if (savedDemoMode === 'true' || savedDemoMode === 'false') {
+      demoModeEnabled = savedDemoMode === 'true';
+    } else {
+      demoModeEnabled = DEMO_MODE_DEFAULT_ENABLED;
+      db.setSetting('demo_mode_enabled', demoModeEnabled ? 'true' : 'false');
+    }
+
     server.listen(PORT, () => {
       console.log(`Server running on http://localhost:${PORT}`);
-      console.log(`Socket.IO ready`);
-      console.log(`Demo mode: ${DEMO_MODE_ENABLED ? 'enabled' : 'disabled'}`);
+      console.log('Socket.IO ready');
+      console.log(`Demo mode: ${demoModeEnabled ? 'enabled' : 'disabled'}`);
     });
   })
   .catch((err) => {
