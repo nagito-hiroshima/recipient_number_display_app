@@ -2,11 +2,13 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useWebSocket } from './useWebSocket';
 import { Ticket, WebSocketMessage } from './types';
 
-/**
- * Chrome 等で SpeechSynthesisUtterance が途中で GC されないよう、
- * 現在の読み上げオブジェクトを参照保持する。
- */
 let activeUtterance: SpeechSynthesisUtterance | null = null;
+
+interface RecallEvent {
+  ticket: Ticket;
+  recallId: string;
+  recalledAt: string;
+}
 
 /** 外部音源不要の短い呼び出しチャイム */
 async function playCallChime(): Promise<void> {
@@ -41,22 +43,25 @@ async function playCallChime(): Promise<void> {
 }
 
 /** ブラウザ標準の日本語音声で伝票番号を読み上げる */
-function speakTicket(ticket: Ticket, forceRestart = false): void {
+function speakTicket(ticket: Ticket, isRecall = false): void {
   if (!('speechSynthesis' in window)) return;
 
   try {
     const synth = window.speechSynthesis;
 
-    // 再呼び出しは、前の読み上げキューが残っていても確実に即時再生する。
-    if (forceRestart) {
+    if (isRecall) {
       synth.cancel();
     }
     synth.resume();
 
     const spokenNumber = ticket.demo ? ticket.id.replace(/^D/i, '') : ticket.id;
     const message = ticket.demo
-      ? `デモ番号 ${spokenNumber} を呼び出します。`
-      : `お待たせしました。番号 ${spokenNumber} のお客様、受け取り口までお越しください。`;
+      ? isRecall
+        ? `再度、デモ番号 ${spokenNumber} を呼び出します。`
+        : `デモ番号 ${spokenNumber} を呼び出します。`
+      : isRecall
+        ? `再度お呼び出しします。番号 ${spokenNumber} のお客様、受け取り口までお越しください。`
+        : `お待たせしました。番号 ${spokenNumber} のお客様、受け取り口までお越しください。`;
 
     const utterance = new SpeechSynthesisUtterance(message);
     activeUtterance = utterance;
@@ -183,6 +188,7 @@ export const PublicDisplayScreen: React.FC = () => {
   const [highlightedTicketId, setHighlightedTicketId] = useState<string | null>(null);
   const highlightTimer = useRef<number | null>(null);
   const speechTimer = useRef<number | null>(null);
+  const processedRecallIds = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (!socket) return;
@@ -199,7 +205,6 @@ export const PublicDisplayScreen: React.FC = () => {
         highlightTimer.current = null;
       }, 5000);
 
-      // 再呼び出しでは、前回の読み上げや待機キューを消してから再度案内する。
       if (isRecall && 'speechSynthesis' in window) {
         window.speechSynthesis.cancel();
         window.speechSynthesis.resume();
@@ -221,19 +226,32 @@ export const PublicDisplayScreen: React.FC = () => {
       if (Array.isArray(message.data)) return;
       const ticket = message.data as Ticket;
 
-      if (message.type === 'ticket:recalled') {
-        announce(ticket, true);
-        return;
-      }
-
+      // 通常の preparing → calling のときだけここで読み上げる。
+      // 再呼び出しは専用 ticket:recall イベントで処理する。
       if (message.type === 'ticket:updated' && ticket.status === 'calling') {
         announce(ticket, false);
       }
     };
 
+    const handleTicketRecall = (event: RecallEvent) => {
+      if (!event?.ticket || !event.recallId) return;
+      if (processedRecallIds.current.has(event.recallId)) return;
+
+      processedRecallIds.current.add(event.recallId);
+      if (processedRecallIds.current.size > 100) {
+        const first = processedRecallIds.current.values().next().value;
+        if (first) processedRecallIds.current.delete(first);
+      }
+
+      announce(event.ticket, true);
+    };
+
     socket.on('ticket:update', handleTicketUpdate);
+    socket.on('ticket:recall', handleTicketRecall);
+
     return () => {
       socket.off('ticket:update', handleTicketUpdate);
+      socket.off('ticket:recall', handleTicketRecall);
       if (highlightTimer.current !== null) {
         window.clearTimeout(highlightTimer.current);
         highlightTimer.current = null;
