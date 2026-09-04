@@ -28,13 +28,22 @@ export class TicketDatabase {
           demo INTEGER NOT NULL DEFAULT 0
         )
       `);
-      this.save();
     }
 
     // 既存DBに列が無ければ追加（マイグレーション）
     this.ensureColumn('source_order_id', 'TEXT');
     this.ensureColumn('from_mobile', 'INTEGER NOT NULL DEFAULT 0');
     this.ensureColumn('demo', 'INTEGER NOT NULL DEFAULT 0');
+
+    // アプリ全体の設定を保存するテーブル。
+    // デモモードのWeb ON/OFFなど、再起動後も維持したい設定に利用する。
+    this.db!.run(`
+      CREATE TABLE IF NOT EXISTS app_settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      )
+    `);
+    this.save();
   }
 
   private ensureColumn(name: string, type: string): void {
@@ -57,6 +66,30 @@ export class TicketDatabase {
     const data = this.db.export();
     const buffer = Buffer.from(data);
     fs.writeFileSync(DB_PATH, buffer);
+  }
+
+  getSetting(key: string): string | null {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const stmt = this.db.prepare('SELECT value FROM app_settings WHERE key = ?');
+    stmt.bind([key]);
+    if (stmt.step()) {
+      const row = stmt.getAsObject();
+      stmt.free();
+      return typeof row.value === 'string' ? row.value : String(row.value);
+    }
+    stmt.free();
+    return null;
+  }
+
+  setSetting(key: string, value: string): void {
+    if (!this.db) throw new Error('Database not initialized');
+
+    this.db.run(
+      'INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)',
+      [key, value]
+    );
+    this.save();
   }
 
   private rowToTicket(row: Record<string, any>): Ticket {
