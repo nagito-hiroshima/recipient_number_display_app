@@ -4,12 +4,6 @@ import { Ticket, WebSocketMessage } from './types';
 
 let activeUtterance: SpeechSynthesisUtterance | null = null;
 
-interface RecallEvent {
-  ticket: Ticket;
-  recallId: string;
-  recalledAt: string;
-}
-
 /** 外部音源不要の短い呼び出しチャイム */
 async function playCallChime(): Promise<void> {
   try {
@@ -48,10 +42,6 @@ function speakTicket(ticket: Ticket, isRecall = false): void {
 
   try {
     const synth = window.speechSynthesis;
-
-    if (isRecall) {
-      synth.cancel();
-    }
     synth.resume();
 
     // デモ伝票は画面上では D123 のように区別するが、
@@ -186,7 +176,6 @@ export const PublicDisplayScreen: React.FC = () => {
   const [highlightedTicketId, setHighlightedTicketId] = useState<string | null>(null);
   const highlightTimer = useRef<number | null>(null);
   const speechTimer = useRef<number | null>(null);
-  const processedRecallIds = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (!socket) return;
@@ -203,14 +192,16 @@ export const PublicDisplayScreen: React.FC = () => {
         highlightTimer.current = null;
       }, 5000);
 
-      if (isRecall && 'speechSynthesis' in window) {
-        window.speechSynthesis.cancel();
-        window.speechSynthesis.resume();
-      }
-
       if (speechTimer.current !== null) {
         window.clearTimeout(speechTimer.current);
         speechTimer.current = null;
+      }
+
+      // 再呼び出し時だけ、以前の読み上げキューを一度だけ破棄する。
+      // speakTicket 側では cancel しないため、二重 cancel による無音化を避ける。
+      if (isRecall && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.resume();
       }
 
       void playCallChime();
@@ -224,32 +215,17 @@ export const PublicDisplayScreen: React.FC = () => {
       if (Array.isArray(message.data)) return;
       const ticket = message.data as Ticket;
 
-      // 通常の preparing → calling のときだけここで読み上げる。
-      // 再呼び出しは専用 ticket:recall イベントで処理する。
+      // 通常呼び出しも再呼び出しも同じ ticket:updated 経路で処理する。
+      // recall フラグが付いたときだけ読み上げ文言を「再度お呼び出しします」にする。
       if (message.type === 'ticket:updated' && ticket.status === 'calling') {
-        announce(ticket, false);
+        announce(ticket, message.recall === true);
       }
-    };
-
-    const handleTicketRecall = (event: RecallEvent) => {
-      if (!event?.ticket || !event.recallId) return;
-      if (processedRecallIds.current.has(event.recallId)) return;
-
-      processedRecallIds.current.add(event.recallId);
-      if (processedRecallIds.current.size > 100) {
-        const first = processedRecallIds.current.values().next().value;
-        if (first) processedRecallIds.current.delete(first);
-      }
-
-      announce(event.ticket, true);
     };
 
     socket.on('ticket:update', handleTicketUpdate);
-    socket.on('ticket:recall', handleTicketRecall);
 
     return () => {
       socket.off('ticket:update', handleTicketUpdate);
-      socket.off('ticket:recall', handleTicketRecall);
       if (highlightTimer.current !== null) {
         window.clearTimeout(highlightTimer.current);
         highlightTimer.current = null;
