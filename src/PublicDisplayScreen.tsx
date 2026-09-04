@@ -1,36 +1,24 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useWebSocket } from './useWebSocket';
 import { Ticket, WebSocketMessage } from './types';
 
-/**
- * 呼び出し時の短いチャイム。
- * 外部音源ファイルを不要にするため Web Audio API で生成する。
- */
+/** 外部音源不要の短い呼び出しチャイム */
 async function playCallChime(): Promise<void> {
   try {
-    const AudioContextClass =
-      window.AudioContext || (window as any).webkitAudioContext;
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
     if (!AudioContextClass) return;
 
     const context: AudioContext = new AudioContextClass();
-    if (context.state === 'suspended') {
-      await context.resume();
-    }
+    if (context.state === 'suspended') await context.resume();
 
-    const playTone = (
-      frequency: number,
-      startAt: number,
-      duration: number
-    ) => {
+    const playTone = (frequency: number, startAt: number, duration: number) => {
       const oscillator = context.createOscillator();
       const gain = context.createGain();
-
       oscillator.type = 'sine';
       oscillator.frequency.setValueAtTime(frequency, startAt);
       gain.gain.setValueAtTime(0.0001, startAt);
       gain.gain.exponentialRampToValueAtTime(0.22, startAt + 0.015);
       gain.gain.exponentialRampToValueAtTime(0.0001, startAt + duration);
-
       oscillator.connect(gain);
       gain.connect(context.destination);
       oscillator.start(startAt);
@@ -40,26 +28,23 @@ async function playCallChime(): Promise<void> {
     const start = context.currentTime + 0.02;
     playTone(880, start, 0.22);
     playTone(659.25, start + 0.25, 0.34);
-
-    window.setTimeout(() => {
-      void context.close();
-    }, 1000);
+    window.setTimeout(() => void context.close(), 1000);
   } catch (error) {
-    // 自動再生ポリシーなどで拒否されても表示画面自体は継続する
     console.warn('Call chime could not be played:', error);
   }
 }
 
-/**
- * ブラウザ標準の日本語音声で伝票番号を読み上げる。
- */
-function speakTicketNumber(ticketId: string): void {
+/** ブラウザ標準の日本語音声で伝票番号を読み上げる */
+function speakTicket(ticket: Ticket): void {
   if (!('speechSynthesis' in window)) return;
 
   try {
-    const utterance = new SpeechSynthesisUtterance(
-      `お待たせしました。番号 ${ticketId} のお客様、受け取り口までお越しください。`
-    );
+    const spokenNumber = ticket.demo ? ticket.id.replace(/^D/i, '') : ticket.id;
+    const message = ticket.demo
+      ? `デモ番号 ${spokenNumber} を呼び出します。`
+      : `お待たせしました。番号 ${spokenNumber} のお客様、受け取り口までお越しください。`;
+
+    const utterance = new SpeechSynthesisUtterance(message);
     utterance.lang = 'ja-JP';
     utterance.rate = 0.95;
     utterance.pitch = 1;
@@ -70,7 +55,6 @@ function speakTicketNumber(ticketId: string): void {
       .find((voice) => voice.lang.toLowerCase().startsWith('ja'));
     if (japaneseVoice) utterance.voice = japaneseVoice;
 
-    // 呼び出しが連続した場合はキューに積んで順番に案内する
     window.speechSynthesis.speak(utterance);
   } catch (error) {
     console.warn('Ticket number could not be spoken:', error);
@@ -80,9 +64,14 @@ function speakTicketNumber(ticketId: string): void {
 interface ReadOnlyPanelProps {
   tickets: Ticket[];
   status: 'preparing' | 'calling';
+  highlightedTicketId: string | null;
 }
 
-const ReadOnlyPanel: React.FC<ReadOnlyPanelProps> = ({ tickets, status }) => {
+const ReadOnlyPanel: React.FC<ReadOnlyPanelProps> = ({
+  tickets,
+  status,
+  highlightedTicketId,
+}) => {
   const isCalling = status === 'calling';
   const filteredTickets = useMemo(
     () => tickets.filter((ticket) => ticket.status === status),
@@ -138,15 +127,22 @@ const ReadOnlyPanel: React.FC<ReadOnlyPanelProps> = ({ tickets, status }) => {
                 ? 'linear-gradient(135deg, var(--preparing-mobile-from), var(--preparing-mobile-to))'
                 : 'linear-gradient(135deg, var(--preparing-from), var(--preparing-to))';
 
+            const highlighted = isCalling && highlightedTicketId === ticket.id;
+
             return (
               <div
                 key={ticket.id}
-                className={`ticket-card${isCalling ? ' ticket-card--calling' : ''}`}
+                className={`ticket-card${isCalling ? ' ticket-card--calling' : ''}${
+                  highlighted ? ' public-ticket-recalled' : ''
+                }`}
                 style={{ ...styles.ticketCard, backgroundImage }}
               >
-                {ticket.fromMobile && (
-                  <div style={styles.mobileBadge}>📱 モバイル注文</div>
-                )}
+                <div style={styles.badges}>
+                  {ticket.demo && <span style={styles.demoBadge}>🧪 DEMO</span>}
+                  {ticket.fromMobile && (
+                    <span style={styles.mobileBadge}>📱 モバイル注文</span>
+                  )}
+                </div>
                 <div style={styles.ticketNumber}>{ticket.id}</div>
               </div>
             );
@@ -157,35 +153,53 @@ const ReadOnlyPanel: React.FC<ReadOnlyPanelProps> = ({ tickets, status }) => {
   );
 };
 
-/**
- * お客様向け表示専用画面。
- * タップ・長押し・ステータス変更などの操作機能は持たない。
- */
+/** お客様向け表示専用画面。操作機能・待ち時間表示は持たない。 */
 export const PublicDisplayScreen: React.FC = () => {
   const { socket, tickets, isConnected } = useWebSocket();
   const [lastCalledNumber, setLastCalledNumber] = useState<string | null>(null);
+  const [highlightedTicketId, setHighlightedTicketId] = useState<string | null>(null);
+  const highlightTimer = useRef<number | null>(null);
 
   useEffect(() => {
     if (!socket) return;
 
-    const handleTicketUpdate = (message: WebSocketMessage) => {
-      if (message.type !== 'ticket:updated' || Array.isArray(message.data)) return;
-
-      const ticket = message.data as Ticket;
-      if (ticket.status !== 'calling') return;
-
+    const announce = (ticket: Ticket) => {
       setLastCalledNumber(ticket.id);
-      void playCallChime();
+      setHighlightedTicketId(ticket.id);
 
-      // チャイムが終わる頃に読み上げを開始
-      window.setTimeout(() => {
-        speakTicketNumber(ticket.id);
-      }, 650);
+      if (highlightTimer.current !== null) {
+        window.clearTimeout(highlightTimer.current);
+      }
+      highlightTimer.current = window.setTimeout(() => {
+        setHighlightedTicketId(null);
+        highlightTimer.current = null;
+      }, 5000);
+
+      void playCallChime();
+      window.setTimeout(() => speakTicket(ticket), 650);
+    };
+
+    const handleTicketUpdate = (message: WebSocketMessage) => {
+      if (Array.isArray(message.data)) return;
+      const ticket = message.data as Ticket;
+
+      if (message.type === 'ticket:recalled') {
+        announce(ticket);
+        return;
+      }
+
+      if (message.type === 'ticket:updated' && ticket.status === 'calling') {
+        announce(ticket);
+      }
     };
 
     socket.on('ticket:update', handleTicketUpdate);
     return () => {
       socket.off('ticket:update', handleTicketUpdate);
+      if (highlightTimer.current !== null) {
+        window.clearTimeout(highlightTimer.current);
+        highlightTimer.current = null;
+      }
     };
   }, [socket]);
 
@@ -205,9 +219,7 @@ export const PublicDisplayScreen: React.FC = () => {
           )}
           <div style={styles.connectionStatus}>
             <span
-              className={`status-dot ${
-                isConnected ? 'status-dot--on' : 'status-dot--off'
-              }`}
+              className={`status-dot ${isConnected ? 'status-dot--on' : 'status-dot--off'}`}
             />
             {isConnected ? 'リアルタイム更新中' : '再接続中...'}
           </div>
@@ -215,8 +227,16 @@ export const PublicDisplayScreen: React.FC = () => {
       </header>
 
       <main className="public-display-main" style={styles.main}>
-        <ReadOnlyPanel tickets={tickets} status="preparing" />
-        <ReadOnlyPanel tickets={tickets} status="calling" />
+        <ReadOnlyPanel
+          tickets={tickets}
+          status="preparing"
+          highlightedTicketId={highlightedTicketId}
+        />
+        <ReadOnlyPanel
+          tickets={tickets}
+          status="calling"
+          highlightedTicketId={highlightedTicketId}
+        />
       </main>
 
       <footer style={styles.footer}>
@@ -304,12 +324,8 @@ const styles: { [key: string]: React.CSSProperties } = {
     borderRadius: 'var(--radius-lg)',
     boxShadow: 'var(--shadow-md)',
   },
-  preparingPanel: {
-    borderTop: '6px solid var(--primary)',
-  },
-  callingPanel: {
-    borderTop: '6px solid var(--calling-to)',
-  },
+  preparingPanel: { borderTop: '6px solid var(--primary)' },
+  callingPanel: { borderTop: '6px solid var(--calling-to)' },
   panelHeader: {
     padding: '18px 22px 14px',
     display: 'flex',
@@ -318,14 +334,8 @@ const styles: { [key: string]: React.CSSProperties } = {
     gap: '16px',
     borderBottom: '1px solid var(--border)',
   },
-  panelTitleWrap: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '12px',
-  },
-  panelIcon: {
-    fontSize: '30px',
-  },
+  panelTitleWrap: { display: 'flex', alignItems: 'center', gap: '12px' },
+  panelIcon: { fontSize: '30px' },
   panelEnglish: {
     marginBottom: '2px',
     fontSize: '10px',
@@ -374,6 +384,13 @@ const styles: { [key: string]: React.CSSProperties } = {
     borderRadius: 'var(--radius-md)',
     boxShadow: 'var(--shadow-md)',
   },
+  badges: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: '6px',
+    marginBottom: '8px',
+  },
   ticketNumber: {
     maxWidth: '100%',
     color: '#fff',
@@ -388,13 +405,21 @@ const styles: { [key: string]: React.CSSProperties } = {
     textShadow: '0 3px 8px rgba(0,0,0,0.18)',
   },
   mobileBadge: {
-    marginBottom: '8px',
     padding: '3px 10px',
     color: '#fff',
     backgroundColor: 'rgba(0,0,0,0.22)',
     borderRadius: '999px',
     fontSize: '12px',
     fontWeight: 800,
+  },
+  demoBadge: {
+    padding: '3px 10px',
+    color: '#fff',
+    backgroundColor: 'rgba(15,23,42,0.5)',
+    borderRadius: '999px',
+    fontSize: '12px',
+    fontWeight: 900,
+    letterSpacing: '0.08em',
   },
   emptyState: {
     gridColumn: '1 / -1',
@@ -409,10 +434,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '18px',
     fontWeight: 600,
   },
-  emptyIcon: {
-    fontSize: '44px',
-    opacity: 0.65,
-  },
+  emptyIcon: { fontSize: '44px', opacity: 0.65 },
   footer: {
     padding: '10px 24px 12px',
     textAlign: 'center',
