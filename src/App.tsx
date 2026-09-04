@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useWebSocket } from './useWebSocket';
 import { TicketInput } from './TicketInput';
 
 const API_KEY_STORAGE_KEY = 'apiToken';
 
 export const InputScreen: React.FC = () => {
+  const navigate = useNavigate();
   const { isConnected } = useWebSocket();
   const [isLoading, setIsLoading] = useState(false);
   const [apiKey, setApiKey] = useState<string>(
@@ -45,9 +47,18 @@ export const InputScreen: React.FC = () => {
     <div style={styles.app}>
       <header style={styles.header}>
         <h1 style={styles.title}>伝票入力画面</h1>
-        <div style={styles.connectionStatus}>
-          <span className={`status-dot ${isConnected ? 'status-dot--on' : 'status-dot--off'}`} />
-          {isConnected ? '接続中' : '再接続中...'}
+        <div style={styles.headerActions}>
+          <button
+            type="button"
+            style={styles.navButton}
+            onClick={() => navigate('/')}
+          >
+            伝票表示へ
+          </button>
+          <div style={styles.connectionStatus}>
+            <span className={`status-dot ${isConnected ? 'status-dot--on' : 'status-dot--off'}`} />
+            {isConnected ? '接続中' : '再接続中...'}
+          </div>
         </div>
       </header>
 
@@ -104,6 +115,21 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '22px',
     fontWeight: 800,
     letterSpacing: '0.04em',
+  },
+  headerActions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '14px',
+  },
+  navButton: {
+    border: '1px solid rgba(255,255,255,0.35)',
+    background: 'rgba(255,255,255,0.12)',
+    color: '#fff',
+    borderRadius: '10px',
+    padding: '9px 14px',
+    fontSize: '14px',
+    fontWeight: 700,
+    cursor: 'pointer',
   },
   connectionStatus: {
     fontSize: '14px',
