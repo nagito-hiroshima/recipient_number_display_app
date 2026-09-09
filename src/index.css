@@ -208,6 +208,57 @@ body {
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
 }
 
+/* Tablet-friendly volume slider: large touch target and thumb. */
+input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 44px;
+  min-width: 220px;
+  background: transparent;
+  cursor: pointer;
+  touch-action: none;
+  padding: 0 4px;
+}
+
+input[type='range']::-webkit-slider-runnable-track {
+  height: 10px;
+  border-radius: 999px;
+  background: #475569;
+}
+
+input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 30px;
+  height: 30px;
+  margin-top: -10px;
+  border: 3px solid #ffffff;
+  border-radius: 50%;
+  background: #3b82f6;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+input[type='range']::-moz-range-track {
+  height: 10px;
+  border-radius: 999px;
+  background: #475569;
+}
+
+input[type='range']::-moz-range-thumb {
+  width: 30px;
+  height: 30px;
+  border: 3px solid #ffffff;
+  border-radius: 50%;
+  background: #3b82f6;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+input[type='range']:focus-visible {
+  outline: 3px solid rgba(96, 165, 250, 0.75);
+  outline-offset: 2px;
+  border-radius: 999px;
+}
+
 /* ------------------------------------------------------------------ */
 /* Scrollbar                                                           */
 /* ------------------------------------------------------------------ */
@@ -225,6 +276,37 @@ body {
 /* ------------------------------------------------------------------ */
 /* Responsive                                                          */
 /* ------------------------------------------------------------------ */
+@media (pointer: coarse) {
+  input[type='range'] {
+    height: 54px;
+    min-width: 260px;
+  }
+
+  input[type='range']::-webkit-slider-runnable-track {
+    height: 12px;
+  }
+
+  input[type='range']::-webkit-slider-thumb {
+    width: 36px;
+    height: 36px;
+    margin-top: -12px;
+  }
+
+  input[type='range']::-moz-range-track {
+    height: 12px;
+  }
+
+  input[type='range']::-moz-range-thumb {
+    width: 36px;
+    height: 36px;
+  }
+
+  .kp-btn {
+    min-height: 48px;
+    min-width: 48px;
+  }
+}
+
 @media (max-width: 768px) {
   .display-main {
     flex-direction: column !important;
