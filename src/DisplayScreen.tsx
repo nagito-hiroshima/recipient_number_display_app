@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useWebSocket } from './useWebSocket';
 import { TicketDisplay } from './TicketDisplay';
 import { TicketMenu } from './TicketMenu';
+import { MediaSettingsModal } from './MediaSettingsModal';
 import { Ticket } from './types';
 
 const API_KEY_STORAGE_KEY = 'apiToken';
@@ -11,6 +12,8 @@ const DEMO_UNLOCK_MAX_GAP_MS = 1200;
 
 interface MediaStatus {
   volume: number;
+  announcementVolume: number;
+  volumeLocked: boolean;
   playing: boolean;
   forceVideo: boolean;
 }
@@ -27,9 +30,16 @@ export const DisplayScreen: React.FC = () => {
   const [demoError, setDemoError] = useState<string | null>(null);
   const [demoUnlockProgress, setDemoUnlockProgress] = useState(0);
   const [recallNotice, setRecallNotice] = useState<string | null>(null);
-  const [media, setMedia] = useState<MediaStatus>({ volume: 0.45, playing: true, forceVideo: false });
+  const [media, setMedia] = useState<MediaStatus>({
+    volume: 0.45,
+    announcementVolume: 1,
+    volumeLocked: false,
+    playing: true,
+    forceVideo: false,
+  });
   const [mediaBusy, setMediaBusy] = useState(false);
   const [mediaError, setMediaError] = useState<string | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const demoTapCount = useRef(0);
   const lastDemoTapAt = useRef(0);
@@ -66,6 +76,8 @@ export const DisplayScreen: React.FC = () => {
       .then((data) => {
         setMedia({
           volume: typeof data.volume === 'number' ? data.volume : 0.45,
+          announcementVolume: typeof data.announcementVolume === 'number' ? data.announcementVolume : 1,
+          volumeLocked: data.volumeLocked === true,
           playing: data.playing !== false,
           forceVideo: data.forceVideo === true,
         });
@@ -204,17 +216,18 @@ export const DisplayScreen: React.FC = () => {
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || 'BGM設定の変更に失敗しました');
-      setMedia({ volume: data.volume, playing: data.playing, forceVideo: data.forceVideo });
+      setMedia({
+        volume: data.volume,
+        announcementVolume: data.announcementVolume,
+        volumeLocked: data.volumeLocked === true,
+        playing: data.playing,
+        forceVideo: data.forceVideo,
+      });
     } catch (error) {
       setMediaError(error instanceof Error ? error.message : 'BGM設定の変更に失敗しました');
     } finally {
       setMediaBusy(false);
     }
-  };
-
-  const changeVolume = (delta: number) => {
-    const volume = Math.max(0, Math.min(1, Math.round((media.volume + delta) * 100) / 100));
-    void mediaRequest({ volume });
   };
 
   const togglePlayback = () => {
@@ -315,21 +328,30 @@ export const DisplayScreen: React.FC = () => {
     void demoRequest('/api/demo/tickets', { method: 'DELETE' });
   };
 
+  const mediaStateLabel = !media.playing
+    ? '停止中'
+    : media.forceVideo
+      ? '映像固定'
+      : activeCount === 0
+        ? '待機映像'
+        : '番号表示';
+
   return (
-    <div className={congestion.critical ? 'congestion-critical' : undefined} style={{ ...styles.app, backgroundColor: congestion.background }}>
+    <div className={congestion.critical ? 'congestion-critical staff-app' : 'staff-app'} style={{ ...styles.app, backgroundColor: congestion.background }}>
       <header
+        className="staff-header"
         style={styles.header}
         onClick={handleHeaderTap}
         title={!demoEnabled ? 'デモモードを有効化するにはヘッダーを5回連続タップ' : undefined}
       >
-        <div style={styles.titleArea}>
+        <div className="staff-title-area" style={styles.titleArea}>
           <div style={styles.titleLine}>
-            <h1 style={styles.title}>伝票表示画面</h1>
+            <h1 style={styles.title}>伝票表示</h1>
             <div style={{ ...styles.congestionBadge, color: congestion.badge, backgroundColor: 'rgba(255,255,255,0.94)' }}>
-              提供待ち {activeCount}件 ・ {congestion.label}
+              {activeCount}件・{congestion.label}
             </div>
             <div style={{ ...styles.modeBadge, backgroundColor: demoEnabled ? '#7c3aed' : '#15803d' }}>
-              {demoEnabled ? '🧪 デモモード' : '● 本番モード'}
+              {demoEnabled ? '🧪 DEMO' : '● 本番'}
             </div>
             {!demoEnabled && demoUnlockProgress > 0 && <div style={styles.unlockProgress}>DEMO {demoUnlockProgress}/{DEMO_UNLOCK_TAPS}</div>}
             {recallNotice && <div style={styles.recallNotice}>{recallNotice}</div>}
@@ -337,61 +359,41 @@ export const DisplayScreen: React.FC = () => {
           {mediaError && <div style={styles.headerError}>{mediaError}</div>}
         </div>
 
-        <div style={styles.headerActions}>
-          <div style={styles.mediaControls}>
-            <div style={styles.mediaControlLabel}>🎵 BGM</div>
+        <div className="staff-header-actions" style={styles.headerActions}>
+          <div className="staff-media-actions" style={styles.mediaActions}>
+            <span style={styles.mediaStateBadge}>{mediaStateLabel}</span>
             <button
               type="button"
               className="kp-btn"
-              style={styles.volumeButton}
-              disabled={mediaBusy || media.volume <= 0}
-              onClick={() => changeVolume(-0.1)}
-            >
-              −10%
-            </button>
-            <div style={styles.volumeReadout}>{Math.round(media.volume * 100)}%</div>
-            <button
-              type="button"
-              className="kp-btn"
-              style={styles.volumeButton}
-              disabled={mediaBusy || media.volume >= 1}
-              onClick={() => changeVolume(0.1)}
-            >
-              ＋10%
-            </button>
-            <button
-              type="button"
-              className="kp-btn"
-              style={{ ...styles.mediaButton, ...(media.playing ? styles.stopButton : styles.playButton) }}
+              style={{ ...styles.actionButton, ...(media.playing ? styles.stopButton : styles.playButton) }}
               disabled={mediaBusy}
               onClick={togglePlayback}
             >
-              {media.playing ? '■ BGM停止' : '▶ BGM再開'}
+              {media.playing ? '■ BGM' : '▶ BGM'}
             </button>
             <button
               type="button"
               className="kp-btn"
-              style={{ ...styles.mediaButton, ...(media.forceVideo ? styles.forceActiveButton : styles.forceButton) }}
+              style={{ ...styles.actionButton, ...(media.forceVideo ? styles.forceActiveButton : styles.forceButton) }}
               disabled={mediaBusy || !media.playing}
               onClick={() => void mediaRequest({ forceVideo: !media.forceVideo })}
             >
-              {media.forceVideo ? '映像固定解除' : '▶ 強制映像'}
+              {media.forceVideo ? '映像解除' : '▶ 映像'}
             </button>
-            <div style={styles.mediaStatusText}>
-              {!media.playing
-                ? 'BGM・映像停止中'
-                : media.forceVideo
-                  ? '映像を強制表示中'
-                  : activeCount === 0
-                    ? '待機中：映像表示'
-                    : '番号表示中：BGMのみ'}
-            </div>
+            <button
+              type="button"
+              className="kp-btn"
+              style={styles.settingsButton}
+              onClick={() => setSettingsOpen(true)}
+            >
+              ⚙ 詳細{media.volumeLocked ? ' 🔒' : ''}
+            </button>
           </div>
 
-          <button type="button" style={styles.navButton} onClick={() => navigate('/number-input')}>伝票入力へ</button>
+          <button type="button" className="kp-btn" style={styles.navButton} onClick={() => navigate('/number-input')}>伝票入力</button>
           <div style={styles.connectionStatus}>
             <span className={`status-dot ${isConnected ? 'status-dot--on' : 'status-dot--off'}`} />
-            {isConnected ? '接続中' : '再接続中...'}
+            {isConnected ? '接続中' : '再接続中'}
           </div>
         </div>
       </header>
@@ -444,34 +446,43 @@ export const DisplayScreen: React.FC = () => {
           onClose={() => setMenuTicket(null)}
         />
       )}
+
+      {settingsOpen && (
+        <MediaSettingsModal
+          bgmVolume={media.volume}
+          announcementVolume={media.announcementVolume}
+          volumeLocked={media.volumeLocked}
+          busy={mediaBusy}
+          onChange={(patch) => { void mediaRequest(patch); }}
+          onClose={() => setSettingsOpen(false)}
+        />
+      )}
     </div>
   );
 };
 
 const styles: { [key: string]: React.CSSProperties } = {
   app: { height: '100vh', display: 'flex', flexDirection: 'column', transition: 'background-color 0.35s ease' },
-  header: { background: 'var(--header-bg)', color: 'white', padding: '10px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '14px', flexWrap: 'wrap', boxShadow: 'var(--shadow-md)', zIndex: 2 },
-  titleArea: { display: 'flex', flexDirection: 'column', gap: '4px', minWidth: '250px', flex: '1 1 320px' },
-  titleLine: { display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' },
-  title: { margin: 0, fontSize: '21px', fontWeight: 800, letterSpacing: '0.04em' },
-  congestionBadge: { padding: '6px 10px', borderRadius: '999px', fontSize: '12px', fontWeight: 900, boxShadow: '0 1px 4px rgba(0,0,0,0.16)' },
-  modeBadge: { padding: '6px 9px', borderRadius: '999px', color: '#fff', fontSize: '11px', fontWeight: 900, letterSpacing: '0.03em' },
-  unlockProgress: { padding: '5px 9px', borderRadius: '999px', backgroundColor: 'rgba(124,58,237,0.9)', color: '#fff', fontSize: '11px', fontWeight: 900, letterSpacing: '0.03em' },
-  recallNotice: { padding: '5px 10px', borderRadius: '999px', backgroundColor: 'rgba(245,158,11,0.95)', color: '#fff', fontSize: '12px', fontWeight: 900 },
-  headerError: { color: '#fecaca', fontSize: '11px', fontWeight: 800 },
-  headerActions: { display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '10px', flexWrap: 'wrap', flex: '1 1 620px' },
-  mediaControls: { display: 'flex', alignItems: 'center', gap: '7px', flexWrap: 'wrap', padding: '6px 8px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.16)', backgroundColor: 'rgba(15,23,42,0.55)' },
-  mediaControlLabel: { fontSize: '12px', fontWeight: 900, color: '#e2e8f0', padding: '0 4px' },
-  volumeButton: { minWidth: '68px', minHeight: '46px', padding: '9px 10px', borderRadius: '10px', border: '1px solid #64748b', backgroundColor: '#1e293b', color: '#fff', fontSize: '14px', fontWeight: 900, cursor: 'pointer' },
-  volumeReadout: { minWidth: '64px', minHeight: '46px', padding: '8px 10px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '10px', border: '1px solid #64748b', backgroundColor: '#020617', color: '#fff', fontSize: '16px', fontWeight: 900, fontVariantNumeric: 'tabular-nums' },
-  mediaButton: { minHeight: '46px', padding: '9px 12px', borderRadius: '10px', border: '1px solid #475569', fontSize: '12px', fontWeight: 900, cursor: 'pointer' },
+  header: { background: 'var(--header-bg)', color: 'white', padding: '9px 14px', boxShadow: 'var(--shadow-md)', zIndex: 2 },
+  titleArea: { minWidth: 0 },
+  titleLine: { display: 'flex', alignItems: 'center', gap: '7px', flexWrap: 'wrap' },
+  title: { margin: 0, fontSize: '20px', fontWeight: 900, letterSpacing: '0.03em', whiteSpace: 'nowrap' },
+  congestionBadge: { padding: '5px 9px', borderRadius: '999px', fontSize: '11px', fontWeight: 900, boxShadow: '0 1px 4px rgba(0,0,0,0.16)', whiteSpace: 'nowrap' },
+  modeBadge: { padding: '5px 8px', borderRadius: '999px', color: '#fff', fontSize: '10px', fontWeight: 900, letterSpacing: '0.03em', whiteSpace: 'nowrap' },
+  unlockProgress: { padding: '5px 8px', borderRadius: '999px', backgroundColor: 'rgba(124,58,237,0.9)', color: '#fff', fontSize: '10px', fontWeight: 900, whiteSpace: 'nowrap' },
+  recallNotice: { padding: '5px 9px', borderRadius: '999px', backgroundColor: 'rgba(245,158,11,0.95)', color: '#fff', fontSize: '11px', fontWeight: 900, whiteSpace: 'nowrap' },
+  headerError: { marginTop: '3px', color: '#fecaca', fontSize: '10px', fontWeight: 800 },
+  headerActions: { minWidth: 0 },
+  mediaActions: { display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 },
+  mediaStateBadge: { padding: '5px 8px', borderRadius: '999px', backgroundColor: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.16)', color: '#cbd5e1', fontSize: '10px', fontWeight: 800, whiteSpace: 'nowrap' },
+  actionButton: { minHeight: '42px', padding: '8px 10px', borderRadius: '10px', border: '1px solid #475569', fontSize: '11px', fontWeight: 900, cursor: 'pointer', whiteSpace: 'nowrap' },
   stopButton: { color: '#fecaca', backgroundColor: '#450a0a', borderColor: '#7f1d1d' },
   playButton: { color: '#bbf7d0', backgroundColor: '#052e16', borderColor: '#166534' },
   forceButton: { color: '#dbeafe', backgroundColor: '#172554', borderColor: '#1d4ed8' },
   forceActiveButton: { color: '#fff7ed', backgroundColor: '#7c2d12', borderColor: '#ea580c' },
-  mediaStatusText: { fontSize: '11px', fontWeight: 700, color: '#cbd5e1', minWidth: '115px' },
-  navButton: { minHeight: '46px', border: '1px solid rgba(255,255,255,0.35)', background: 'rgba(255,255,255,0.12)', color: '#fff', borderRadius: '10px', padding: '9px 14px', fontSize: '14px', fontWeight: 700, cursor: 'pointer' },
-  connectionStatus: { fontSize: '13px', fontWeight: 600, display: 'flex', alignItems: 'center', color: 'rgba(255,255,255,0.9)' },
+  settingsButton: { minHeight: '42px', padding: '8px 10px', borderRadius: '10px', border: '1px solid #64748b', backgroundColor: '#334155', color: '#fff', fontSize: '11px', fontWeight: 900, cursor: 'pointer', whiteSpace: 'nowrap' },
+  navButton: { minHeight: '42px', border: '1px solid rgba(255,255,255,0.35)', background: 'rgba(255,255,255,0.12)', color: '#fff', borderRadius: '10px', padding: '8px 11px', fontSize: '12px', fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap' },
+  connectionStatus: { fontSize: '11px', fontWeight: 700, display: 'flex', alignItems: 'center', color: 'rgba(255,255,255,0.88)', whiteSpace: 'nowrap' },
   demoBar: { minHeight: '58px', padding: '9px 18px', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', backgroundColor: 'rgba(255,255,255,0.92)', borderBottom: '1px solid rgba(148,163,184,0.35)', boxShadow: '0 2px 8px rgba(15,23,42,0.06)', zIndex: 1 },
   demoTitleWrap: { display: 'flex', alignItems: 'center', gap: '9px', flexWrap: 'wrap' },
   demoModeToggle: { border: 'none', padding: '7px 10px', borderRadius: '999px', color: '#fff', fontSize: '12px', fontWeight: 900, letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '7px', cursor: 'pointer' },
