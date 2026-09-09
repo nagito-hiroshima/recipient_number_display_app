@@ -4,13 +4,18 @@ import { Ticket, WebSocketMessage } from './types';
 
 interface MediaStatus {
   volume: number;
+  announcementVolume: number;
+  volumeLocked: boolean;
   playing: boolean;
   forceVideo: boolean;
 }
 
 let activeUtterance: SpeechSynthesisUtterance | null = null;
 
-async function playCallChime(): Promise<void> {
+async function playCallChime(volume: number): Promise<void> {
+  const normalizedVolume = Math.max(0, Math.min(1, volume));
+  if (normalizedVolume <= 0) return;
+
   try {
     const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
     if (!AudioContextClass) return;
@@ -24,7 +29,7 @@ async function playCallChime(): Promise<void> {
       oscillator.type = 'sine';
       oscillator.frequency.setValueAtTime(frequency, startAt);
       gain.gain.setValueAtTime(0.0001, startAt);
-      gain.gain.exponentialRampToValueAtTime(0.22, startAt + 0.015);
+      gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, 0.22 * normalizedVolume), startAt + 0.015);
       gain.gain.exponentialRampToValueAtTime(0.0001, startAt + duration);
       oscillator.connect(gain);
       gain.connect(context.destination);
@@ -41,7 +46,7 @@ async function playCallChime(): Promise<void> {
   }
 }
 
-function speakTicket(ticket: Ticket, isRecall = false): Promise<void> {
+function speakTicket(ticket: Ticket, isRecall = false, volume = 1): Promise<void> {
   return new Promise((resolve) => {
     if (!('speechSynthesis' in window)) {
       resolve();
@@ -62,7 +67,7 @@ function speakTicket(ticket: Ticket, isRecall = false): Promise<void> {
       utterance.lang = 'ja-JP';
       utterance.rate = 0.95;
       utterance.pitch = 1;
-      utterance.volume = 1;
+      utterance.volume = Math.max(0, Math.min(1, volume));
 
       const japaneseVoice = synth
         .getVoices()
@@ -179,7 +184,13 @@ export const PublicDisplayScreen: React.FC = () => {
   const { socket, tickets, isConnected } = useWebSocket();
   const [lastCalledNumber, setLastCalledNumber] = useState<string | null>(null);
   const [highlightedTicketId, setHighlightedTicketId] = useState<string | null>(null);
-  const [media, setMedia] = useState<MediaStatus>({ volume: 0.45, playing: true, forceVideo: false });
+  const [media, setMedia] = useState<MediaStatus>({
+    volume: 0.45,
+    announcementVolume: 1,
+    volumeLocked: false,
+    playing: true,
+    forceVideo: false,
+  });
   const [autoplayBlocked, setAutoplayBlocked] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -220,6 +231,8 @@ export const PublicDisplayScreen: React.FC = () => {
       .then((data) => {
         setMedia({
           volume: typeof data.volume === 'number' ? data.volume : 0.45,
+          announcementVolume: typeof data.announcementVolume === 'number' ? data.announcementVolume : 1,
+          volumeLocked: data.volumeLocked === true,
           playing: data.playing !== false,
           forceVideo: data.forceVideo === true,
         });
@@ -255,9 +268,9 @@ export const PublicDisplayScreen: React.FC = () => {
         await fadeVideoVolume(video, currentMedia.volume * 0.18, 650);
       }
 
-      await playCallChime();
+      await playCallChime(currentMedia.announcementVolume);
       await wait(700);
-      await speakTicket(ticket, isRecall);
+      await speakTicket(ticket, isRecall, currentMedia.announcementVolume);
       await wait(200);
 
       if (video && mediaRef.current.playing) {
