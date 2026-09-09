@@ -35,7 +35,6 @@ export const DisplayScreen: React.FC = () => {
   const lastDemoTapAt = useRef(0);
   const demoTapResetTimer = useRef<number | null>(null);
   const recallNoticeTimer = useRef<number | null>(null);
-  const volumeSaveTimer = useRef<number | null>(null);
 
   const apiKey = localStorage.getItem(API_KEY_STORAGE_KEY)?.trim() || '';
 
@@ -108,7 +107,6 @@ export const DisplayScreen: React.FC = () => {
     return () => {
       if (demoTapResetTimer.current !== null) window.clearTimeout(demoTapResetTimer.current);
       if (recallNoticeTimer.current !== null) window.clearTimeout(recallNoticeTimer.current);
-      if (volumeSaveTimer.current !== null) window.clearTimeout(volumeSaveTimer.current);
     };
   }, []);
 
@@ -214,14 +212,17 @@ export const DisplayScreen: React.FC = () => {
     }
   };
 
-  const handleVolumeChange = (value: number) => {
-    const volume = Math.max(0, Math.min(1, value));
-    setMedia((current) => ({ ...current, volume }));
-    if (volumeSaveTimer.current !== null) window.clearTimeout(volumeSaveTimer.current);
-    volumeSaveTimer.current = window.setTimeout(() => {
-      void mediaRequest({ volume });
-      volumeSaveTimer.current = null;
-    }, 250);
+  const changeVolume = (delta: number) => {
+    const volume = Math.max(0, Math.min(1, Math.round((media.volume + delta) * 100) / 100));
+    void mediaRequest({ volume });
+  };
+
+  const togglePlayback = () => {
+    if (media.playing) {
+      void mediaRequest({ playing: false, forceVideo: false });
+    } else {
+      void mediaRequest({ playing: true });
+    }
   };
 
   const demoRequest = async (path: string, options: { method?: string; body?: unknown } = {}) => {
@@ -322,18 +323,71 @@ export const DisplayScreen: React.FC = () => {
         title={!demoEnabled ? 'デモモードを有効化するにはヘッダーを5回連続タップ' : undefined}
       >
         <div style={styles.titleArea}>
-          <h1 style={styles.title}>伝票表示画面</h1>
-          <div style={{ ...styles.congestionBadge, color: congestion.badge, backgroundColor: 'rgba(255,255,255,0.94)' }}>
-            提供待ち {activeCount}件 ・ {congestion.label}
+          <div style={styles.titleLine}>
+            <h1 style={styles.title}>伝票表示画面</h1>
+            <div style={{ ...styles.congestionBadge, color: congestion.badge, backgroundColor: 'rgba(255,255,255,0.94)' }}>
+              提供待ち {activeCount}件 ・ {congestion.label}
+            </div>
+            <div style={{ ...styles.modeBadge, backgroundColor: demoEnabled ? '#7c3aed' : '#15803d' }}>
+              {demoEnabled ? '🧪 デモモード' : '● 本番モード'}
+            </div>
+            {!demoEnabled && demoUnlockProgress > 0 && <div style={styles.unlockProgress}>DEMO {demoUnlockProgress}/{DEMO_UNLOCK_TAPS}</div>}
+            {recallNotice && <div style={styles.recallNotice}>{recallNotice}</div>}
           </div>
-          <div style={{ ...styles.modeBadge, backgroundColor: demoEnabled ? '#7c3aed' : '#15803d' }}>
-            {demoEnabled ? '🧪 デモモード' : '● 本番モード'}
-          </div>
-          {!demoEnabled && demoUnlockProgress > 0 && <div style={styles.unlockProgress}>DEMO {demoUnlockProgress}/{DEMO_UNLOCK_TAPS}</div>}
-          {recallNotice && <div style={styles.recallNotice}>{recallNotice}</div>}
+          {mediaError && <div style={styles.headerError}>{mediaError}</div>}
         </div>
 
         <div style={styles.headerActions}>
+          <div style={styles.mediaControls}>
+            <div style={styles.mediaControlLabel}>🎵 BGM</div>
+            <button
+              type="button"
+              className="kp-btn"
+              style={styles.volumeButton}
+              disabled={mediaBusy || media.volume <= 0}
+              onClick={() => changeVolume(-0.1)}
+            >
+              −10%
+            </button>
+            <div style={styles.volumeReadout}>{Math.round(media.volume * 100)}%</div>
+            <button
+              type="button"
+              className="kp-btn"
+              style={styles.volumeButton}
+              disabled={mediaBusy || media.volume >= 1}
+              onClick={() => changeVolume(0.1)}
+            >
+              ＋10%
+            </button>
+            <button
+              type="button"
+              className="kp-btn"
+              style={{ ...styles.mediaButton, ...(media.playing ? styles.stopButton : styles.playButton) }}
+              disabled={mediaBusy}
+              onClick={togglePlayback}
+            >
+              {media.playing ? '■ BGM停止' : '▶ BGM再開'}
+            </button>
+            <button
+              type="button"
+              className="kp-btn"
+              style={{ ...styles.mediaButton, ...(media.forceVideo ? styles.forceActiveButton : styles.forceButton) }}
+              disabled={mediaBusy || !media.playing}
+              onClick={() => void mediaRequest({ forceVideo: !media.forceVideo })}
+            >
+              {media.forceVideo ? '映像固定解除' : '▶ 強制映像'}
+            </button>
+            <div style={styles.mediaStatusText}>
+              {!media.playing
+                ? 'BGM・映像停止中'
+                : media.forceVideo
+                  ? '映像を強制表示中'
+                  : activeCount === 0
+                    ? '待機中：映像表示'
+                    : '番号表示中：BGMのみ'}
+            </div>
+          </div>
+
           <button type="button" style={styles.navButton} onClick={() => navigate('/number-input')}>伝票入力へ</button>
           <div style={styles.connectionStatus}>
             <span className={`status-dot ${isConnected ? 'status-dot--on' : 'status-dot--off'}`} />
@@ -341,46 +395,6 @@ export const DisplayScreen: React.FC = () => {
           </div>
         </div>
       </header>
-
-      <div style={styles.mediaBar}>
-        <div style={styles.mediaTitle}>🎵 BGM / 映像</div>
-        <div style={styles.volumeGroup}>
-          <span style={styles.mediaLabel}>音量</span>
-          <input
-            type="range"
-            min="0"
-            max="100"
-            step="1"
-            value={Math.round(media.volume * 100)}
-            onChange={(event) => handleVolumeChange(Number(event.target.value) / 100)}
-            style={styles.volumeSlider}
-            disabled={mediaBusy && !media.playing}
-          />
-          <strong style={styles.volumeValue}>{Math.round(media.volume * 100)}%</strong>
-        </div>
-        <button
-          type="button"
-          className="kp-btn"
-          style={{ ...styles.mediaButton, ...(media.playing ? styles.stopButton : styles.playButton) }}
-          disabled={mediaBusy}
-          onClick={() => void mediaRequest({ playing: !media.playing })}
-        >
-          {media.playing ? '■ BGM停止' : '▶ BGM再開'}
-        </button>
-        <button
-          type="button"
-          className="kp-btn"
-          style={{ ...styles.mediaButton, ...(media.forceVideo ? styles.forceActiveButton : styles.forceButton) }}
-          disabled={mediaBusy}
-          onClick={() => void mediaRequest({ forceVideo: !media.forceVideo })}
-        >
-          {media.forceVideo ? '映像固定を解除' : '▶ 強制映像再生'}
-        </button>
-        <div style={styles.mediaStatusText}>
-          {media.forceVideo ? '映像を強制表示中' : activeCount === 0 ? '待機中：映像表示' : '番号表示中：BGMのみ'}
-        </div>
-        {mediaError && <div style={styles.mediaError}>{mediaError}</div>}
-      </div>
 
       {demoEnabled && (
         <div style={styles.demoBar}>
@@ -436,29 +450,28 @@ export const DisplayScreen: React.FC = () => {
 
 const styles: { [key: string]: React.CSSProperties } = {
   app: { height: '100vh', display: 'flex', flexDirection: 'column', transition: 'background-color 0.35s ease' },
-  header: { background: 'var(--header-bg)', color: 'white', padding: '14px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: 'var(--shadow-md)', zIndex: 2 },
-  titleArea: { display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' },
-  title: { margin: 0, fontSize: '22px', fontWeight: 800, letterSpacing: '0.04em' },
-  congestionBadge: { padding: '6px 11px', borderRadius: '999px', fontSize: '13px', fontWeight: 900, boxShadow: '0 1px 4px rgba(0,0,0,0.16)' },
-  modeBadge: { padding: '6px 10px', borderRadius: '999px', color: '#fff', fontSize: '12px', fontWeight: 900, letterSpacing: '0.03em' },
+  header: { background: 'var(--header-bg)', color: 'white', padding: '10px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '14px', flexWrap: 'wrap', boxShadow: 'var(--shadow-md)', zIndex: 2 },
+  titleArea: { display: 'flex', flexDirection: 'column', gap: '4px', minWidth: '250px', flex: '1 1 320px' },
+  titleLine: { display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' },
+  title: { margin: 0, fontSize: '21px', fontWeight: 800, letterSpacing: '0.04em' },
+  congestionBadge: { padding: '6px 10px', borderRadius: '999px', fontSize: '12px', fontWeight: 900, boxShadow: '0 1px 4px rgba(0,0,0,0.16)' },
+  modeBadge: { padding: '6px 9px', borderRadius: '999px', color: '#fff', fontSize: '11px', fontWeight: 900, letterSpacing: '0.03em' },
   unlockProgress: { padding: '5px 9px', borderRadius: '999px', backgroundColor: 'rgba(124,58,237,0.9)', color: '#fff', fontSize: '11px', fontWeight: 900, letterSpacing: '0.03em' },
   recallNotice: { padding: '5px 10px', borderRadius: '999px', backgroundColor: 'rgba(245,158,11,0.95)', color: '#fff', fontSize: '12px', fontWeight: 900 },
-  headerActions: { display: 'flex', alignItems: 'center', gap: '14px' },
-  navButton: { border: '1px solid rgba(255,255,255,0.35)', background: 'rgba(255,255,255,0.12)', color: '#fff', borderRadius: '10px', padding: '9px 14px', fontSize: '14px', fontWeight: 700, cursor: 'pointer' },
-  connectionStatus: { fontSize: '14px', fontWeight: 600, display: 'flex', alignItems: 'center', color: 'rgba(255,255,255,0.9)' },
-  mediaBar: { minHeight: '60px', padding: '10px 18px', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', backgroundColor: '#0f172a', color: '#fff', borderBottom: '1px solid #334155', zIndex: 1 },
-  mediaTitle: { fontSize: '13px', fontWeight: 900, letterSpacing: '0.04em' },
-  volumeGroup: { display: 'flex', alignItems: 'center', gap: '8px', minWidth: '250px' },
-  mediaLabel: { fontSize: '12px', fontWeight: 700, color: '#cbd5e1' },
-  volumeSlider: { width: '160px', cursor: 'pointer' },
-  volumeValue: { minWidth: '42px', fontSize: '12px', textAlign: 'right' },
-  mediaButton: { padding: '8px 12px', borderRadius: '9px', border: '1px solid #475569', fontSize: '12px', fontWeight: 900, cursor: 'pointer' },
+  headerError: { color: '#fecaca', fontSize: '11px', fontWeight: 800 },
+  headerActions: { display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '10px', flexWrap: 'wrap', flex: '1 1 620px' },
+  mediaControls: { display: 'flex', alignItems: 'center', gap: '7px', flexWrap: 'wrap', padding: '6px 8px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.16)', backgroundColor: 'rgba(15,23,42,0.55)' },
+  mediaControlLabel: { fontSize: '12px', fontWeight: 900, color: '#e2e8f0', padding: '0 4px' },
+  volumeButton: { minWidth: '68px', minHeight: '46px', padding: '9px 10px', borderRadius: '10px', border: '1px solid #64748b', backgroundColor: '#1e293b', color: '#fff', fontSize: '14px', fontWeight: 900, cursor: 'pointer' },
+  volumeReadout: { minWidth: '64px', minHeight: '46px', padding: '8px 10px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '10px', border: '1px solid #64748b', backgroundColor: '#020617', color: '#fff', fontSize: '16px', fontWeight: 900, fontVariantNumeric: 'tabular-nums' },
+  mediaButton: { minHeight: '46px', padding: '9px 12px', borderRadius: '10px', border: '1px solid #475569', fontSize: '12px', fontWeight: 900, cursor: 'pointer' },
   stopButton: { color: '#fecaca', backgroundColor: '#450a0a', borderColor: '#7f1d1d' },
   playButton: { color: '#bbf7d0', backgroundColor: '#052e16', borderColor: '#166534' },
   forceButton: { color: '#dbeafe', backgroundColor: '#172554', borderColor: '#1d4ed8' },
   forceActiveButton: { color: '#fff7ed', backgroundColor: '#7c2d12', borderColor: '#ea580c' },
-  mediaStatusText: { fontSize: '12px', fontWeight: 700, color: '#cbd5e1' },
-  mediaError: { fontSize: '12px', fontWeight: 800, color: '#fca5a5' },
+  mediaStatusText: { fontSize: '11px', fontWeight: 700, color: '#cbd5e1', minWidth: '115px' },
+  navButton: { minHeight: '46px', border: '1px solid rgba(255,255,255,0.35)', background: 'rgba(255,255,255,0.12)', color: '#fff', borderRadius: '10px', padding: '9px 14px', fontSize: '14px', fontWeight: 700, cursor: 'pointer' },
+  connectionStatus: { fontSize: '13px', fontWeight: 600, display: 'flex', alignItems: 'center', color: 'rgba(255,255,255,0.9)' },
   demoBar: { minHeight: '58px', padding: '9px 18px', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', backgroundColor: 'rgba(255,255,255,0.92)', borderBottom: '1px solid rgba(148,163,184,0.35)', boxShadow: '0 2px 8px rgba(15,23,42,0.06)', zIndex: 1 },
   demoTitleWrap: { display: 'flex', alignItems: 'center', gap: '9px', flexWrap: 'wrap' },
   demoModeToggle: { border: 'none', padding: '7px 10px', borderRadius: '999px', color: '#fff', fontSize: '12px', fontWeight: 900, letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '7px', cursor: 'pointer' },
