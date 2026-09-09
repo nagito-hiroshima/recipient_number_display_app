@@ -192,7 +192,8 @@ export const PublicDisplayScreen: React.FC = () => {
     () => tickets.filter((ticket) => ticket.status === 'preparing' || ticket.status === 'calling'),
     [tickets]
   );
-  const showVideo = media.forceVideo || activeTickets.length === 0;
+
+  const showVideo = media.playing && (media.forceVideo || activeTickets.length === 0);
 
   useEffect(() => {
     mediaRef.current = media;
@@ -209,6 +210,7 @@ export const PublicDisplayScreen: React.FC = () => {
         .catch(() => setAutoplayBlocked(true));
     } else {
       video.pause();
+      setAutoplayBlocked(false);
     }
   }, [media]);
 
@@ -339,42 +341,10 @@ export const PublicDisplayScreen: React.FC = () => {
 };
 
 const styles: { [key: string]: React.CSSProperties } = {
-  screen: {
-    width: '100vw',
-    height: '100vh',
-    position: 'relative',
-    overflow: 'hidden',
-    backgroundColor: '#000',
-    color: 'var(--text)',
-    userSelect: 'none',
-  },
-  video: {
-    position: 'absolute',
-    inset: 0,
-    width: '100%',
-    height: '100%',
-    objectFit: 'cover',
-    transition: 'opacity 0.45s ease',
-  },
-  numberLayer: {
-    position: 'absolute',
-    inset: 0,
-    display: 'flex',
-    flexDirection: 'column',
-    backgroundColor: 'var(--bg)',
-  },
-  header: {
-    minHeight: '94px',
-    padding: '16px 30px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: '24px',
-    color: '#fff',
-    background: 'var(--header-bg)',
-    boxShadow: 'var(--shadow-md)',
-    zIndex: 1,
-  },
+  screen: { width: '100vw', height: '100vh', position: 'relative', overflow: 'hidden', backgroundColor: '#000', color: 'var(--text)', userSelect: 'none' },
+  video: { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', transition: 'opacity 0.45s ease' },
+  numberLayer: { position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', backgroundColor: 'var(--bg)' },
+  header: { minHeight: '94px', padding: '16px 30px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '24px', color: '#fff', background: 'var(--header-bg)', boxShadow: 'var(--shadow-md)', zIndex: 1 },
   headerEnglish: { marginBottom: '3px', fontSize: '11px', fontWeight: 800, letterSpacing: '0.18em', opacity: 0.68 },
   headerTitle: { margin: 0, fontSize: 'clamp(25px, 2.6vw, 40px)', fontWeight: 900, letterSpacing: '0.04em' },
   headerRight: { display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' },
@@ -392,13 +362,13 @@ const styles: { [key: string]: React.CSSProperties } = {
   panelTitle: { margin: 0, fontSize: 'clamp(24px, 2.4vw, 38px)', fontWeight: 900, letterSpacing: '0.03em' },
   countBadge: { minWidth: '58px', padding: '5px 15px', borderRadius: '999px', textAlign: 'center', fontSize: 'clamp(24px, 2.5vw, 38px)', lineHeight: 1, fontWeight: 900, backgroundColor: 'var(--surface-muted)', border: '1px solid var(--border)' },
   ticketGrid: { flex: 1, minHeight: 0, overflowY: 'auto', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gridAutoRows: 'minmax(130px, max-content)', alignContent: 'start', gap: '14px', padding: '18px', pointerEvents: 'none' },
-  ticketCard: { position: 'relative', minHeight: '130px', padding: '14px 12px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-md)' },
-  badges: { display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '6px', marginBottom: '8px' },
-  ticketNumber: { maxWidth: '100%', color: '#fff', fontSize: 'clamp(42px, 5.4vw, 82px)', fontWeight: 900, lineHeight: 1, letterSpacing: '0.02em', textAlign: 'center', wordBreak: 'break-all', overflowWrap: 'anywhere', fontVariantNumeric: 'tabular-nums', textShadow: '0 3px 8px rgba(0,0,0,0.18)' },
-  mobileBadge: { padding: '3px 10px', color: '#fff', backgroundColor: 'rgba(0,0,0,0.22)', borderRadius: '999px', fontSize: '12px', fontWeight: 800 },
-  demoBadge: { padding: '3px 10px', color: '#fff', backgroundColor: 'rgba(15,23,42,0.5)', borderRadius: '999px', fontSize: '12px', fontWeight: 900, letterSpacing: '0.08em' },
-  emptyState: { gridColumn: '1 / -1', minHeight: '220px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '12px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '18px', fontWeight: 600 },
-  emptyIcon: { fontSize: '44px', opacity: 0.65 },
-  footer: { padding: '10px 24px 12px', textAlign: 'center', color: 'var(--text-muted)', backgroundColor: 'var(--surface)', borderTop: '1px solid var(--border)', fontSize: '14px', fontWeight: 700, letterSpacing: '0.02em' },
-  autoplayNotice: { position: 'absolute', left: '50%', bottom: '28px', transform: 'translateX(-50%)', zIndex: 10, padding: '14px 20px', borderRadius: '999px', backgroundColor: 'rgba(15,23,42,0.92)', color: '#fff', fontSize: '16px', fontWeight: 800, boxShadow: '0 8px 24px rgba(0,0,0,0.28)' },
+  ticketCard: { position: 'relative', minHeight: '130px', borderRadius: '18px', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 24px rgba(15,23,42,0.16)', overflow: 'hidden' },
+  ticketNumber: { fontSize: 'clamp(52px, 6.8vw, 100px)', lineHeight: 1, fontWeight: 950, letterSpacing: '0.03em', textShadow: '0 3px 12px rgba(0,0,0,0.22)' },
+  badges: { position: 'absolute', top: '10px', left: '10px', right: '10px', display: 'flex', gap: '6px', flexWrap: 'wrap' },
+  demoBadge: { padding: '4px 7px', borderRadius: '999px', backgroundColor: 'rgba(76,29,149,0.9)', color: '#fff', fontSize: '10px', fontWeight: 900 },
+  mobileBadge: { padding: '4px 7px', borderRadius: '999px', backgroundColor: 'rgba(15,23,42,0.62)', color: '#fff', fontSize: '10px', fontWeight: 900 },
+  emptyState: { minHeight: '180px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '10px', color: 'var(--text-muted)', fontSize: '18px', fontWeight: 800 },
+  emptyIcon: { fontSize: '42px', opacity: 0.7 },
+  footer: { padding: '10px 20px 14px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '14px', fontWeight: 700 },
+  autoplayNotice: { position: 'absolute', left: '50%', bottom: '26px', transform: 'translateX(-50%)', zIndex: 10, padding: '14px 20px', borderRadius: '14px', backgroundColor: 'rgba(15,23,42,0.92)', color: '#fff', fontSize: '16px', fontWeight: 900, boxShadow: '0 8px 28px rgba(0,0,0,0.35)' },
 };
