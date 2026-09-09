@@ -60,6 +60,26 @@ body {
   height: 100vh;
 }
 
+/* スタッフ画面はタブレット長押しによる文字範囲選択・iOS calloutを抑止する。 */
+.staff-app,
+.staff-app * {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.staff-app input,
+.staff-app textarea {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+
+button,
+[role='button'] {
+  touch-action: manipulation;
+}
+
 /* ------------------------------------------------------------------ */
 /* Animations                                                          */
 /* ------------------------------------------------------------------ */
@@ -208,55 +228,36 @@ body {
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
 }
 
-/* Tablet-friendly volume slider: large touch target and thumb. */
-input[type='range'] {
-  -webkit-appearance: none;
-  appearance: none;
-  height: 44px;
-  min-width: 220px;
-  background: transparent;
-  cursor: pointer;
-  touch-action: none;
-  padding: 0 4px;
+/* ------------------------------------------------------------------ */
+/* Staff header                                                        */
+/* ------------------------------------------------------------------ */
+.staff-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: nowrap;
 }
 
-input[type='range']::-webkit-slider-runnable-track {
-  height: 10px;
-  border-radius: 999px;
-  background: #475569;
+.staff-title-area {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
-input[type='range']::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 30px;
-  height: 30px;
-  margin-top: -10px;
-  border: 3px solid #ffffff;
-  border-radius: 50%;
-  background: #3b82f6;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+.staff-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex: 0 0 auto;
+  min-width: 0;
 }
 
-input[type='range']::-moz-range-track {
-  height: 10px;
-  border-radius: 999px;
-  background: #475569;
-}
-
-input[type='range']::-moz-range-thumb {
-  width: 30px;
-  height: 30px;
-  border: 3px solid #ffffff;
-  border-radius: 50%;
-  background: #3b82f6;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
-}
-
-input[type='range']:focus-visible {
-  outline: 3px solid rgba(96, 165, 250, 0.75);
-  outline-offset: 2px;
-  border-radius: 999px;
+.staff-media-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
 }
 
 /* ------------------------------------------------------------------ */
@@ -277,37 +278,41 @@ input[type='range']:focus-visible {
 /* Responsive                                                          */
 /* ------------------------------------------------------------------ */
 @media (pointer: coarse) {
-  input[type='range'] {
-    height: 54px;
-    min-width: 260px;
-  }
-
-  input[type='range']::-webkit-slider-runnable-track {
-    height: 12px;
-  }
-
-  input[type='range']::-webkit-slider-thumb {
-    width: 36px;
-    height: 36px;
-    margin-top: -12px;
-  }
-
-  input[type='range']::-moz-range-track {
-    height: 12px;
-  }
-
-  input[type='range']::-moz-range-thumb {
-    width: 36px;
-    height: 36px;
-  }
-
   .kp-btn {
     min-height: 48px;
     min-width: 48px;
   }
 }
 
-@media (max-width: 768px) {
+@media (max-width: 1120px) {
+  .staff-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .staff-header-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .staff-media-actions {
+    flex: 1 1 auto;
+  }
+}
+
+@media (max-width: 760px) {
+  .staff-header-actions {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 7px;
+  }
+
+  .staff-media-actions {
+    grid-column: 1 / -1;
+    width: 100%;
+    justify-content: space-between;
+  }
+
   .display-main {
     flex-direction: column !important;
   }
