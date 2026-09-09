@@ -14,10 +14,14 @@ const app: Express = express();
 const PORT = Number(process.env.PORT) || 3000;
 const API_TOKEN = process.env.API_TOKEN;
 
-// 環境変数は「初期値」として使用し、その後はWeb UIから変更可能。
 const DEMO_MODE_DEFAULT_ENABLED =
   (process.env.DEMO_MODE_ENABLED || 'true').trim().toLowerCase() !== 'false';
 let demoModeEnabled = DEMO_MODE_DEFAULT_ENABLED;
+
+// /display のMV/BGM共通設定。DBに保存し、複数端末へSocket.IOで同期する。
+let mediaVolume = 0.45;
+let mediaPlaying = true;
+let forceVideo = false;
 
 if (!API_TOKEN) {
   console.error('Error: API_TOKEN is not set in .env file');
@@ -81,6 +85,18 @@ function broadcastDemoStatus() {
   });
 }
 
+function getMediaStatus() {
+  return {
+    volume: mediaVolume,
+    playing: mediaPlaying,
+    forceVideo,
+  };
+}
+
+function broadcastMediaStatus() {
+  io.emit('media:status', getMediaStatus());
+}
+
 function createRandomDemoTicket(): Ticket {
   for (let attempt = 0; attempt < 2000; attempt++) {
     const number = Math.floor(Math.random() * 900) + 100;
@@ -138,6 +154,7 @@ io.on('connection', (socket: Socket) => {
       enabled: demoModeEnabled,
       autoRunning: demoTimer !== null,
     });
+    socket.emit('media:status', getMediaStatus());
   } catch (err) {
     console.error('Error sending initial data:', err);
   }
@@ -232,8 +249,6 @@ app.post('/api/tickets/:id/recall', authenticateToken, (req, res) => {
     const recallId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const recalledAt = new Date().toISOString();
 
-    // 再呼び出しも通常呼び出しと同じ ticket:update / ticket:updated 経路を使う。
-    // recall フラグだけ付け、表示側では安定した同一イベント経路のまま文言を切り替える。
     broadcastUpdate({ type: 'ticket:updated', data: ticket, recall: true });
 
     console.log(`Ticket recalled: ${ticket.id} (${recallId})`);
@@ -257,6 +272,55 @@ app.delete('/api/tickets/:id', (req, res) => {
 });
 
 // ------------------------------------------------------------------
+// MV / BGM 設定
+// ------------------------------------------------------------------
+app.get('/api/media/status', (_req, res) => {
+  res.json(getMediaStatus());
+});
+
+app.post('/api/media/settings', authenticateToken, (req, res) => {
+  try {
+    const { volume, playing, forceVideo: requestedForceVideo } = req.body ?? {};
+
+    if (volume !== undefined) {
+      const nextVolume = Number(volume);
+      if (!Number.isFinite(nextVolume) || nextVolume < 0 || nextVolume > 1) {
+        return res.status(400).json({ error: 'volume must be between 0 and 1' });
+      }
+      mediaVolume = nextVolume;
+      db.setSetting('media_volume', String(mediaVolume));
+    }
+
+    if (playing !== undefined) {
+      if (typeof playing !== 'boolean') {
+        return res.status(400).json({ error: 'playing must be boolean' });
+      }
+      mediaPlaying = playing;
+      db.setSetting('media_playing', mediaPlaying ? 'true' : 'false');
+    }
+
+    if (requestedForceVideo !== undefined) {
+      if (typeof requestedForceVideo !== 'boolean') {
+        return res.status(400).json({ error: 'forceVideo must be boolean' });
+      }
+      forceVideo = requestedForceVideo;
+      db.setSetting('force_video', forceVideo ? 'true' : 'false');
+    }
+
+    broadcastMediaStatus();
+    res.json({ success: true, ...getMediaStatus() });
+  } catch (err) {
+    console.error('Error changing media settings:', err);
+    res.status(500).json({ error: 'Failed to change media settings' });
+  }
+});
+
+// mv.mp4 はリポジトリ直下にあるため、distとは別に明示配信する。
+app.get('/mv.mp4', (_req, res) => {
+  res.sendFile(path.resolve('mv.mp4'));
+});
+
+// ------------------------------------------------------------------
 // デモモード
 // ------------------------------------------------------------------
 app.get('/api/demo/status', (_req, res) => {
@@ -266,8 +330,6 @@ app.get('/api/demo/status', (_req, res) => {
   });
 });
 
-// Web UI からデモモードそのものをON/OFFする。
-// APIキー必須。OFFにすると自動進行は停止するがデモ伝票は残す。
 app.post('/api/demo/enabled', authenticateToken, (req, res) => {
   try {
     const enabled = req.body?.enabled;
@@ -438,10 +500,32 @@ db.initialize()
       db.setSetting('demo_mode_enabled', demoModeEnabled ? 'true' : 'false');
     }
 
+    const savedVolume = Number(db.getSetting('media_volume'));
+    if (Number.isFinite(savedVolume) && savedVolume >= 0 && savedVolume <= 1) {
+      mediaVolume = savedVolume;
+    } else {
+      db.setSetting('media_volume', String(mediaVolume));
+    }
+
+    const savedPlaying = db.getSetting('media_playing');
+    if (savedPlaying === 'true' || savedPlaying === 'false') {
+      mediaPlaying = savedPlaying === 'true';
+    } else {
+      db.setSetting('media_playing', mediaPlaying ? 'true' : 'false');
+    }
+
+    const savedForceVideo = db.getSetting('force_video');
+    if (savedForceVideo === 'true' || savedForceVideo === 'false') {
+      forceVideo = savedForceVideo === 'true';
+    } else {
+      db.setSetting('force_video', forceVideo ? 'true' : 'false');
+    }
+
     server.listen(PORT, () => {
       console.log(`Server running on http://localhost:${PORT}`);
       console.log('Socket.IO ready');
       console.log(`Demo mode: ${demoModeEnabled ? 'enabled' : 'disabled'}`);
+      console.log(`Media: ${mediaPlaying ? 'playing' : 'paused'}, volume ${Math.round(mediaVolume * 100)}%`);
     });
   })
   .catch((err) => {
