@@ -18,8 +18,10 @@ const DEMO_MODE_DEFAULT_ENABLED =
   (process.env.DEMO_MODE_ENABLED || 'true').trim().toLowerCase() !== 'false';
 let demoModeEnabled = DEMO_MODE_DEFAULT_ENABLED;
 
-// /display のMV/BGM共通設定。DBに保存し、複数端末へSocket.IOで同期する。
+// /display のMV/BGM/アナウンス共通設定。DBに保存し、複数端末へSocket.IOで同期する。
 let mediaVolume = 0.45;
+let announcementVolume = 1;
+let mediaVolumeLocked = false;
 let mediaPlaying = true;
 let forceVideo = false;
 
@@ -88,6 +90,8 @@ function broadcastDemoStatus() {
 function getMediaStatus() {
   return {
     volume: mediaVolume,
+    announcementVolume,
+    volumeLocked: mediaVolumeLocked,
     playing: mediaPlaying,
     forceVideo,
   };
@@ -272,7 +276,7 @@ app.delete('/api/tickets/:id', (req, res) => {
 });
 
 // ------------------------------------------------------------------
-// MV / BGM 設定
+// MV / BGM / アナウンス設定
 // ------------------------------------------------------------------
 app.get('/api/media/status', (_req, res) => {
   res.json(getMediaStatus());
@@ -280,7 +284,26 @@ app.get('/api/media/status', (_req, res) => {
 
 app.post('/api/media/settings', authenticateToken, (req, res) => {
   try {
-    const { volume, playing, forceVideo: requestedForceVideo } = req.body ?? {};
+    const {
+      volume,
+      announcementVolume: requestedAnnouncementVolume,
+      volumeLocked: requestedVolumeLocked,
+      playing,
+      forceVideo: requestedForceVideo,
+    } = req.body ?? {};
+
+    if (requestedVolumeLocked !== undefined && typeof requestedVolumeLocked !== 'boolean') {
+      return res.status(400).json({ error: 'volumeLocked must be boolean' });
+    }
+
+    const isUnlocking = requestedVolumeLocked === false;
+    if (
+      mediaVolumeLocked &&
+      !isUnlocking &&
+      (volume !== undefined || requestedAnnouncementVolume !== undefined)
+    ) {
+      return res.status(423).json({ error: '音量がロックされています。詳細設定からロックを解除してください。' });
+    }
 
     if (volume !== undefined) {
       const nextVolume = Number(volume);
@@ -289,6 +312,15 @@ app.post('/api/media/settings', authenticateToken, (req, res) => {
       }
       mediaVolume = nextVolume;
       db.setSetting('media_volume', String(mediaVolume));
+    }
+
+    if (requestedAnnouncementVolume !== undefined) {
+      const nextAnnouncementVolume = Number(requestedAnnouncementVolume);
+      if (!Number.isFinite(nextAnnouncementVolume) || nextAnnouncementVolume < 0 || nextAnnouncementVolume > 1) {
+        return res.status(400).json({ error: 'announcementVolume must be between 0 and 1' });
+      }
+      announcementVolume = nextAnnouncementVolume;
+      db.setSetting('announcement_volume', String(announcementVolume));
     }
 
     if (playing !== undefined) {
@@ -305,6 +337,16 @@ app.post('/api/media/settings', authenticateToken, (req, res) => {
       }
       forceVideo = requestedForceVideo;
       db.setSetting('force_video', forceVideo ? 'true' : 'false');
+    }
+
+    if (!mediaPlaying && forceVideo) {
+      forceVideo = false;
+      db.setSetting('force_video', 'false');
+    }
+
+    if (requestedVolumeLocked !== undefined) {
+      mediaVolumeLocked = requestedVolumeLocked;
+      db.setSetting('media_volume_locked', mediaVolumeLocked ? 'true' : 'false');
     }
 
     broadcastMediaStatus();
@@ -507,6 +549,20 @@ db.initialize()
       db.setSetting('media_volume', String(mediaVolume));
     }
 
+    const savedAnnouncementVolume = Number(db.getSetting('announcement_volume'));
+    if (Number.isFinite(savedAnnouncementVolume) && savedAnnouncementVolume >= 0 && savedAnnouncementVolume <= 1) {
+      announcementVolume = savedAnnouncementVolume;
+    } else {
+      db.setSetting('announcement_volume', String(announcementVolume));
+    }
+
+    const savedVolumeLocked = db.getSetting('media_volume_locked');
+    if (savedVolumeLocked === 'true' || savedVolumeLocked === 'false') {
+      mediaVolumeLocked = savedVolumeLocked === 'true';
+    } else {
+      db.setSetting('media_volume_locked', mediaVolumeLocked ? 'true' : 'false');
+    }
+
     const savedPlaying = db.getSetting('media_playing');
     if (savedPlaying === 'true' || savedPlaying === 'false') {
       mediaPlaying = savedPlaying === 'true';
@@ -521,11 +577,18 @@ db.initialize()
       db.setSetting('force_video', forceVideo ? 'true' : 'false');
     }
 
+    if (!mediaPlaying && forceVideo) {
+      forceVideo = false;
+      db.setSetting('force_video', 'false');
+    }
+
     server.listen(PORT, () => {
       console.log(`Server running on http://localhost:${PORT}`);
       console.log('Socket.IO ready');
       console.log(`Demo mode: ${demoModeEnabled ? 'enabled' : 'disabled'}`);
-      console.log(`Media: ${mediaPlaying ? 'playing' : 'paused'}, volume ${Math.round(mediaVolume * 100)}%`);
+      console.log(
+        `Media: ${mediaPlaying ? 'playing' : 'paused'}, BGM ${Math.round(mediaVolume * 100)}%, announcement ${Math.round(announcementVolume * 100)}%, volume lock ${mediaVolumeLocked ? 'on' : 'off'}`
+      );
     });
   })
   .catch((err) => {
