@@ -9,27 +9,20 @@ export const InputScreen: React.FC = () => {
   const navigate = useNavigate();
   const { isConnected } = useWebSocket();
   const [isLoading, setIsLoading] = useState(false);
-  const [apiKey, setApiKey] = useState<string>(
-    () => localStorage.getItem(API_KEY_STORAGE_KEY) || ''
-  );
-
-  const handleApiKeyChange = (value: string) => {
-    setApiKey(value);
-    localStorage.setItem(API_KEY_STORAGE_KEY, value);
-  };
 
   const handleSubmitTicket = async (ticketId: string) => {
-    if (!apiKey.trim()) {
-      throw new Error('APIキーを入力してください');
+    const apiKey = localStorage.getItem(API_KEY_STORAGE_KEY)?.trim() || '';
+    if (!apiKey) {
+      throw new Error('APIキーが未登録です。伝票表示画面（/）からAPIキーを登録してください');
     }
+
     setIsLoading(true);
     try {
-      const token = apiKey.trim();
       const response = await fetch('/api/tickets', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
+          'Authorization': `Bearer ${apiKey}`,
         },
         body: JSON.stringify({ id: ticketId }),
       });
@@ -63,30 +56,6 @@ export const InputScreen: React.FC = () => {
       </header>
 
       <div style={styles.container}>
-        <div style={styles.apiKeyBox}>
-          <label style={styles.apiKeyLabel} htmlFor="api-key-input">
-            APIキー
-          </label>
-          <input
-            id="api-key-input"
-            className="text-input"
-            type="password"
-            value={apiKey}
-            onChange={(e) => handleApiKeyChange(e.target.value)}
-            placeholder="APIキーを入力"
-            autoComplete="off"
-            style={styles.apiKeyInput}
-          />
-          <span
-            style={{
-              ...styles.apiKeyStatus,
-              color: apiKey.trim() ? 'var(--success)' : 'var(--danger)',
-              backgroundColor: apiKey.trim() ? 'rgba(22,163,74,0.1)' : 'rgba(239,68,68,0.1)',
-            }}
-          >
-            {apiKey.trim() ? '設定済み' : '未設定'}
-          </span>
-        </div>
         <TicketInput onSubmit={handleSubmitTicket} isLoading={isLoading} />
       </div>
     </div>
@@ -147,39 +116,5 @@ const styles: { [key: string]: React.CSSProperties } = {
     alignItems: 'center',
     gap: '16px',
     overflowY: 'auto',
-  },
-  apiKeyBox: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '12px',
-    maxWidth: '460px',
-    width: '100%',
-    padding: '14px 18px',
-    backgroundColor: 'var(--surface)',
-    border: '1px solid var(--border)',
-    borderRadius: 'var(--radius-md)',
-    boxShadow: 'var(--shadow-sm)',
-  },
-  apiKeyLabel: {
-    fontSize: '14px',
-    fontWeight: 700,
-    color: 'var(--text)',
-    whiteSpace: 'nowrap',
-  },
-  apiKeyInput: {
-    flex: 1,
-    padding: '10px 12px',
-    fontSize: '14px',
-    border: '1px solid var(--border)',
-    borderRadius: 'var(--radius-sm)',
-    outline: 'none',
-    transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
-  },
-  apiKeyStatus: {
-    fontSize: '12px',
-    fontWeight: 700,
-    padding: '4px 10px',
-    borderRadius: '999px',
-    whiteSpace: 'nowrap',
   },
 };
