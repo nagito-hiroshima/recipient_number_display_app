@@ -126,7 +126,7 @@ export const MediaSettingsModal: React.FC<MediaSettingsModalProps> = ({
 
         <VolumeControl
           title="BGM音量"
-          description="MVの通常再生音量です。アナウンス中はここから自動的に小さくなります。"
+          description="MVの通常再生音量です。表示100%でも実際の出力は安全上限70%です。アナウンス中はさらに自動で小さくなります。"
           value={bgmVolume}
           busy={busy}
           locked={volumeLocked}
@@ -135,7 +135,7 @@ export const MediaSettingsModal: React.FC<MediaSettingsModalProps> = ({
 
         <VolumeControl
           title="アナウンス音量"
-          description="呼び出しチャイムと番号読み上げの音量です。"
+          description="呼び出しチャイムと番号読み上げの音量です。こちらは100%で最大出力になります。"
           value={announcementVolume}
           busy={busy}
           locked={volumeLocked}
