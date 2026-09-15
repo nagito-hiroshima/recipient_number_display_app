@@ -10,6 +10,15 @@ interface MediaStatus {
   forceVideo: boolean;
 }
 
+// 操作画面の100%を実際のvideo.volume=1.0にはしない。
+// MV音源が大きいため、表示100%でも実出力は70%を上限とする。
+// アナウンス音量にはこの上限を適用しない。
+const BGM_OUTPUT_MAX = 0.7;
+
+function toBgmOutputVolume(volume: number): number {
+  return Math.max(0, Math.min(1, volume)) * BGM_OUTPUT_MAX;
+}
+
 let activeUtterance: SpeechSynthesisUtterance | null = null;
 
 async function playCallChime(volume: number): Promise<void> {
@@ -212,7 +221,7 @@ export const PublicDisplayScreen: React.FC = () => {
     if (!video) return;
 
     if (!isDucking.current) {
-      video.volume = media.volume;
+      video.volume = toBgmOutputVolume(media.volume);
     }
 
     if (media.playing) {
@@ -265,7 +274,7 @@ export const PublicDisplayScreen: React.FC = () => {
       const currentMedia = mediaRef.current;
       if (video && currentMedia.playing) {
         isDucking.current = true;
-        await fadeVideoVolume(video, currentMedia.volume * 0.18, 650);
+        await fadeVideoVolume(video, toBgmOutputVolume(currentMedia.volume) * 0.12, 650);
       }
 
       await playCallChime(currentMedia.announcementVolume);
@@ -274,7 +283,7 @@ export const PublicDisplayScreen: React.FC = () => {
       await wait(200);
 
       if (video && mediaRef.current.playing) {
-        await fadeVideoVolume(video, mediaRef.current.volume, 1200);
+        await fadeVideoVolume(video, toBgmOutputVolume(mediaRef.current.volume), 1200);
       }
       isDucking.current = false;
     };
