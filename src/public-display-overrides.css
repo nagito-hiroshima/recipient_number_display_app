@@ -1,0 +1,88 @@
+/*
+ * /display の大量注文時レイアウト補正。
+ * 8件までは既存の大きいカード表示を維持し、件数が増えたときだけ
+ * 列数・カード高・番号文字を段階的に縮小して、スクロールせず一覧しやすくする。
+ */
+
+.public-display-main .scroll-area:has(.ticket-card:nth-child(9)) {
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)) !important;
+  grid-auto-rows: minmax(88px, 1fr) !important;
+  gap: 10px !important;
+  padding: 12px !important;
+  overflow: hidden !important;
+}
+
+.public-display-main .scroll-area:has(.ticket-card:nth-child(9)) .ticket-card {
+  min-height: 88px !important;
+  border-radius: 14px !important;
+}
+
+.public-display-main .scroll-area:has(.ticket-card:nth-child(9)) .ticket-card > div:last-child {
+  font-size: clamp(38px, 3.3vw, 62px) !important;
+}
+
+.public-display-main .scroll-area:has(.ticket-card:nth-child(17)) {
+  grid-template-columns: repeat(auto-fit, minmax(105px, 1fr)) !important;
+  grid-auto-rows: minmax(68px, 1fr) !important;
+  gap: 8px !important;
+  padding: 10px !important;
+}
+
+.public-display-main .scroll-area:has(.ticket-card:nth-child(17)) .ticket-card {
+  min-height: 68px !important;
+  border-radius: 12px !important;
+}
+
+.public-display-main .scroll-area:has(.ticket-card:nth-child(17)) .ticket-card > div:last-child {
+  font-size: clamp(30px, 2.7vw, 50px) !important;
+}
+
+.public-display-main .scroll-area:has(.ticket-card:nth-child(17)) .ticket-card > div:first-child {
+  top: 5px !important;
+  left: 6px !important;
+  right: 6px !important;
+  gap: 3px !important;
+}
+
+.public-display-main .scroll-area:has(.ticket-card:nth-child(17)) .ticket-card > div:first-child span {
+  padding: 2px 5px !important;
+  font-size: 8px !important;
+}
+
+.public-display-main .scroll-area:has(.ticket-card:nth-child(29)) {
+  grid-template-columns: repeat(auto-fit, minmax(86px, 1fr)) !important;
+  grid-auto-rows: minmax(50px, 1fr) !important;
+  gap: 6px !important;
+  padding: 8px !important;
+}
+
+.public-display-main .scroll-area:has(.ticket-card:nth-child(29)) .ticket-card {
+  min-height: 50px !important;
+  border-radius: 10px !important;
+}
+
+.public-display-main .scroll-area:has(.ticket-card:nth-child(29)) .ticket-card > div:last-child {
+  font-size: clamp(24px, 2.15vw, 40px) !important;
+}
+
+/* 超高密度時はバッジより番号の可読性を優先する。 */
+.public-display-main .scroll-area:has(.ticket-card:nth-child(37)) .ticket-card > div:first-child {
+  display: none !important;
+}
+
+@media (max-width: 1100px), (max-height: 720px) {
+  .public-display-main .scroll-area:has(.ticket-card:nth-child(9)) {
+    grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)) !important;
+    grid-auto-rows: minmax(60px, 1fr) !important;
+    gap: 7px !important;
+    padding: 8px !important;
+  }
+
+  .public-display-main .scroll-area:has(.ticket-card:nth-child(9)) .ticket-card {
+    min-height: 60px !important;
+  }
+
+  .public-display-main .scroll-area:has(.ticket-card:nth-child(9)) .ticket-card > div:last-child {
+    font-size: clamp(26px, 3vw, 44px) !important;
+  }
+}
