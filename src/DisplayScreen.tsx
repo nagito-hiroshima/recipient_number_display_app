@@ -4,6 +4,7 @@ import { useWebSocket } from './useWebSocket';
 import { TicketDisplay } from './TicketDisplay';
 import { TicketMenu } from './TicketMenu';
 import { MediaSettingsModal } from './MediaSettingsModal';
+import { ApiKeyModal } from './ApiKeyModal';
 import { Ticket } from './types';
 
 const API_KEY_STORAGE_KEY = 'apiToken';
@@ -40,13 +41,13 @@ export const DisplayScreen: React.FC = () => {
   const [mediaBusy, setMediaBusy] = useState(false);
   const [mediaError, setMediaError] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [apiKey, setApiKey] = useState(() => localStorage.getItem(API_KEY_STORAGE_KEY)?.trim() || '');
+  const [apiKeyOpen, setApiKeyOpen] = useState(false);
 
   const demoTapCount = useRef(0);
   const lastDemoTapAt = useRef(0);
   const demoTapResetTimer = useRef<number | null>(null);
   const recallNoticeTimer = useRef<number | null>(null);
-
-  const apiKey = localStorage.getItem(API_KEY_STORAGE_KEY)?.trim() || '';
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 30000);
@@ -122,6 +123,16 @@ export const DisplayScreen: React.FC = () => {
     };
   }, []);
 
+  const saveApiKey = (value: string) => {
+    const next = value.trim();
+    if (!next) return;
+    localStorage.setItem(API_KEY_STORAGE_KEY, next);
+    setApiKey(next);
+    setApiKeyOpen(false);
+    setDemoError(null);
+    setMediaError(null);
+  };
+
   const activeCount = useMemo(
     () => tickets.filter((ticket) => ticket.status === 'preparing' || ticket.status === 'calling').length,
     [tickets]
@@ -169,7 +180,8 @@ export const DisplayScreen: React.FC = () => {
 
   const handleRecall = async (ticketId: string, updateCalledAt: boolean) => {
     if (!apiKey) {
-      window.alert('再呼び出しにはAPIキーが必要です。先に「伝票入力へ」からAPIキーを設定してください。');
+      setApiKeyOpen(true);
+      window.alert('再呼び出しにはAPIキーが必要です。APIキーを登録してください。');
       return;
     }
 
@@ -202,7 +214,8 @@ export const DisplayScreen: React.FC = () => {
 
   const mediaRequest = async (patch: Partial<MediaStatus>) => {
     if (!apiKey) {
-      setMediaError('APIキー未設定です。「伝票入力へ」からAPIキーを設定してください。');
+      setMediaError('APIキー未設定です。APIキーを登録してください。');
+      setApiKeyOpen(true);
       return;
     }
 
@@ -240,7 +253,8 @@ export const DisplayScreen: React.FC = () => {
 
   const demoRequest = async (path: string, options: { method?: string; body?: unknown } = {}) => {
     if (!apiKey) {
-      setDemoError('APIキー未設定です。「伝票入力へ」からAPIキーを設定してください。');
+      setDemoError('APIキー未設定です。APIキーを登録してください。');
+      setApiKeyOpen(true);
       return null;
     }
 
@@ -268,7 +282,8 @@ export const DisplayScreen: React.FC = () => {
   const disableDemoMode = () => {
     if (!demoEnabled) return;
     if (!apiKey) {
-      setDemoError('APIキー未設定です。「伝票入力へ」からAPIキーを設定してください。');
+      setDemoError('APIキー未設定です。APIキーを登録してください。');
+      setApiKeyOpen(true);
       return;
     }
 
@@ -305,7 +320,7 @@ export const DisplayScreen: React.FC = () => {
       setDemoUnlockProgress(0);
 
       if (!apiKey) {
-        window.alert('デモモードをONにするにはAPIキーが必要です。「伝票入力へ」から設定してください。');
+        setApiKeyOpen(true);
         return;
       }
 
@@ -413,6 +428,14 @@ export const DisplayScreen: React.FC = () => {
               <span style={styles.demoToggleHint}>OFFにする</span>
             </button>
             <span style={styles.demoHelp}>{apiKey ? 'APIキー設定済み' : 'APIキー未設定'}{demoAutoRunning ? ' ・ 自動進行中' : ''}</span>
+            <button
+              type="button"
+              className="kp-btn"
+              style={{ ...styles.apiKeyButton, ...(apiKey ? styles.apiKeyButtonRegistered : {}) }}
+              onClick={() => setApiKeyOpen(true)}
+            >
+              🔑 {apiKey ? 'APIキー変更' : 'APIキー登録'}
+            </button>
           </div>
 
           <div style={styles.demoActions}>
@@ -457,6 +480,14 @@ export const DisplayScreen: React.FC = () => {
           onClose={() => setSettingsOpen(false)}
         />
       )}
+
+      {apiKeyOpen && (
+        <ApiKeyModal
+          value={apiKey}
+          onSave={saveApiKey}
+          onClose={() => setApiKeyOpen(false)}
+        />
+      )}
     </div>
   );
 };
@@ -488,6 +519,8 @@ const styles: { [key: string]: React.CSSProperties } = {
   demoModeToggle: { border: 'none', padding: '7px 10px', borderRadius: '999px', color: '#fff', fontSize: '12px', fontWeight: 900, letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '7px', cursor: 'pointer' },
   demoToggleHint: { padding: '2px 6px', borderRadius: '999px', backgroundColor: 'rgba(255,255,255,0.2)', fontSize: '10px', letterSpacing: 0 },
   demoHelp: { color: 'var(--text-muted)', fontSize: '12px', fontWeight: 700 },
+  apiKeyButton: { padding: '7px 10px', borderRadius: '9px', border: '1px solid #93c5fd', backgroundColor: '#eff6ff', color: '#1d4ed8', fontSize: '12px', fontWeight: 900, cursor: 'pointer', whiteSpace: 'nowrap' },
+  apiKeyButtonRegistered: { borderColor: '#86efac', backgroundColor: '#f0fdf4', color: '#166534' },
   demoActions: { display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' },
   demoButton: { padding: '8px 11px', borderRadius: '9px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#334155', fontSize: '12px', fontWeight: 800, cursor: 'pointer' },
   demoStartButton: { color: '#166534', borderColor: '#86efac', backgroundColor: '#f0fdf4' },
