@@ -7,6 +7,7 @@ import cros from 'cors';
 import { Ticket, WebSocketMessage } from './src/types';
 import dotenv from 'dotenv';
 import { verifySquareSignature, retrieveOrder, resolveTicketNumber } from './square';
+import { createProjectionRouter } from './projection';
 
 dotenv.config();
 
@@ -36,6 +37,7 @@ const SQUARE_WEBHOOK_URL = process.env.SQUARE_WEBHOOK_URL;
 app.use(cros());
 app.use(
   express.json({
+    limit: '7mb',
     verify: (req: Request & { rawBody?: Buffer }, _res, buf) => {
       req.rawBody = buf;
     },
@@ -75,6 +77,10 @@ const io = new Server(server, {
 
 const db = new TicketDatabase();
 let demoTimer: ReturnType<typeof setInterval> | null = null;
+
+// /display へ一時的に文字・画像を全面投影するAPI。
+// 投影データはメモリのみで保持し、サーバー再起動時には通常表示へ戻す。
+app.use('/api/projection', createProjectionRouter(io, API_TOKEN));
 
 function broadcastUpdate(message: WebSocketMessage) {
   io.emit('ticket:update', message);
