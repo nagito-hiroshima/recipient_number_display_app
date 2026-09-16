@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { InputScreen } from './App';
 import { DisplayScreen } from './DisplayScreen';
 import { PublicDisplayScreen } from './PublicDisplayScreen';
+import { ProjectionRuntime } from './ProjectionRuntime';
 
 export const AppRouter: React.FC = () => {
   return (
@@ -13,6 +14,7 @@ export const AppRouter: React.FC = () => {
         <Route path="/number-input" element={<InputScreen />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      <ProjectionRuntime />
     </Router>
   );
 };
