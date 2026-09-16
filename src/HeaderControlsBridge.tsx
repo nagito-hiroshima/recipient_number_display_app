@@ -2,9 +2,6 @@ import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation } from 'react-router-dom';
 import { io, Socket } from 'socket.io-client';
-import { ApiKeyModal } from './ApiKeyModal';
-
-const API_KEY_STORAGE_KEY = 'apiToken';
 
 interface ProjectionState {
   active: boolean;
@@ -18,16 +15,13 @@ function getSocketUrl(): string {
 }
 
 /**
- * 既存の各操作をスタッフ画面のヘッダーへ集約するためのブリッジ。
- * ProjectionRuntime の投影モーダルはそのまま利用し、右下の起動ボタンだけを隠して
- * ヘッダーの「投影」ボタンから起動する。
+ * スタッフ画面の通常操作をヘッダーへ集約するためのブリッジ。
+ * APIキー操作はデバッグ（DEMO）領域に残し、ヘッダーには日常操作だけを置く。
  */
 export const HeaderControlsBridge: React.FC = () => {
   const location = useLocation();
   const [target, setTarget] = useState<HTMLElement | null>(null);
   const [projectionActive, setProjectionActive] = useState(false);
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem(API_KEY_STORAGE_KEY)?.trim() || '');
-  const [apiKeyOpen, setApiKeyOpen] = useState(false);
 
   useEffect(() => {
     if (location.pathname !== '/') {
@@ -75,8 +69,8 @@ export const HeaderControlsBridge: React.FC = () => {
   useEffect(() => {
     if (location.pathname !== '/') return;
 
-    // ProjectionRuntime が持つ旧右下ボタンと、DEMO欄にある旧APIキーボタンを隠す。
-    // 機能本体は残すため、投影モーダルはヘッダー側から旧ボタンを内部的に起動する。
+    // ProjectionRuntime が持つ旧右下ボタンだけを隠す。
+    // APIキーはデバッグ（DEMO）領域の既存ボタンをそのまま使用する。
     const normalizeControls = () => {
       const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('button'));
       for (const button of buttons) {
@@ -85,10 +79,6 @@ export const HeaderControlsBridge: React.FC = () => {
 
         if (text.includes('ディスプレイ投影') || text === '📺 投影中') {
           button.dataset.legacyProjectionLauncher = 'true';
-          button.style.display = 'none';
-        }
-
-        if ((text.includes('APIキー登録') || text.includes('APIキー変更')) && !button.closest('.staff-header-actions')) {
           button.style.display = 'none';
         }
       }
@@ -105,53 +95,23 @@ export const HeaderControlsBridge: React.FC = () => {
     legacyButton?.click();
   };
 
-  const saveApiKey = (value: string) => {
-    const next = value.trim();
-    if (!next) return;
-    localStorage.setItem(API_KEY_STORAGE_KEY, next);
-    setApiKey(next);
-    setApiKeyOpen(false);
-  };
-
   if (location.pathname !== '/' || !target) return null;
 
-  return (
+  return createPortal(
     <>
-      {createPortal(
-        <>
-          <span style={styles.divider} aria-hidden="true" />
-          <button
-            type="button"
-            className="kp-btn"
-            data-header-unified-control="true"
-            style={{ ...styles.headerButton, ...(projectionActive ? styles.projectionActive : {}) }}
-            onClick={openProjection}
-            title="準備中・タイムセール・本日終了・自由文字・画像を /display に投影"
-          >
-            📺 {projectionActive ? '投影中' : '投影'}
-          </button>
-          <button
-            type="button"
-            className="kp-btn"
-            data-header-unified-control="true"
-            style={{ ...styles.headerButton, ...(apiKey ? styles.apiRegistered : {}) }}
-            onClick={() => setApiKeyOpen(true)}
-            title={apiKey ? '登録済みAPIキーを確認・変更' : 'APIキーを登録'}
-          >
-            🔑 {apiKey ? 'API' : 'API登録'}
-          </button>
-        </>,
-        target
-      )}
-
-      {apiKeyOpen && (
-        <ApiKeyModal
-          value={apiKey}
-          onSave={saveApiKey}
-          onClose={() => setApiKeyOpen(false)}
-        />
-      )}
-    </>
+      <span style={styles.divider} aria-hidden="true" />
+      <button
+        type="button"
+        className="kp-btn"
+        data-header-unified-control="true"
+        style={{ ...styles.headerButton, ...(projectionActive ? styles.projectionActive : {}) }}
+        onClick={openProjection}
+        title="準備中・タイムセール・本日終了・自由文字・画像を /display に投影"
+      >
+        📺 {projectionActive ? '投影中' : '投影'}
+      </button>
+    </>,
+    target
   );
 };
 
@@ -179,10 +139,5 @@ const styles: { [key: string]: React.CSSProperties } = {
     borderColor: '#fca5a5',
     backgroundColor: '#9f0b0d',
     boxShadow: '0 0 0 2px rgba(239,68,68,0.14)',
-  },
-  apiRegistered: {
-    borderColor: '#86efac',
-    backgroundColor: '#14532d',
-    color: '#dcfce7',
   },
 };
