@@ -9,5 +9,5 @@
     "rootDir": "./",
     "jsx": "react-jsx"
   },
-  "include": ["server.ts", "database.ts", "square.ts", "src/types.ts"]
+  "include": ["server.ts", "database.ts", "square.ts", "projection.ts", "src/types.ts"]
 }
