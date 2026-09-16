@@ -50,6 +50,7 @@ export function createProjectionRouter(io: Server, apiToken: string) {
   });
 
   router.get('/status', (_req, res) => {
+    res.set('Cache-Control', 'no-store');
     res.json(state);
   });
 
