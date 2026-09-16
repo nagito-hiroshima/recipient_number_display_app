@@ -5,6 +5,7 @@ import { DisplayScreen } from './DisplayScreen';
 import { PublicDisplayScreen } from './PublicDisplayScreen';
 import { ProjectionRuntime } from './ProjectionRuntime';
 import { HeaderControlsBridge } from './HeaderControlsBridge';
+import { ProjectionAssetFix } from './ProjectionAssetFix';
 
 export const AppRouter: React.FC = () => {
   return (
@@ -17,6 +18,7 @@ export const AppRouter: React.FC = () => {
       </Routes>
       <ProjectionRuntime />
       <HeaderControlsBridge />
+      <ProjectionAssetFix />
     </Router>
   );
 };
