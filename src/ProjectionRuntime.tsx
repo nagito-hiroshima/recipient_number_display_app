@@ -18,6 +18,11 @@ interface ProjectionState {
   updatedAt: string | null;
 }
 
+interface ImagePreset {
+  title: string;
+  image: string;
+}
+
 const EMPTY_PROJECTION: ProjectionState = {
   active: false,
   kind: 'none',
@@ -28,10 +33,12 @@ const EMPTY_PROJECTION: ProjectionState = {
   updatedAt: null,
 };
 
-const PRESETS: Array<{ title: string; subtitle: string; theme: ProjectionTheme; icon: string }> = [
-  { title: '準備中', subtitle: 'ただいま営業開始に向けて準備しております', theme: 'prepare', icon: '🛠️' },
-  { title: 'タイムセール中', subtitle: 'ただいまお得なタイムセールを実施中！', theme: 'sale', icon: '🔥' },
-  { title: '本日終了', subtitle: '本日の営業は終了しました。ありがとうございました。', theme: 'closed', icon: '🌙' },
+const IMAGE_PRESETS: ImagePreset[] = [
+  { title: '準備中', image: new URL('./assets/projection/prepare.webp', import.meta.url).href },
+  { title: '営業中', image: new URL('./assets/projection/open.webp', import.meta.url).href },
+  { title: 'タイムセール中', image: new URL('./assets/projection/sale.webp', import.meta.url).href },
+  { title: 'モバイルオーダー受付中', image: new URL('./assets/projection/mobile.webp', import.meta.url).href },
+  { title: '本日終了', image: new URL('./assets/projection/closed.webp', import.meta.url).href },
 ];
 
 function getSocketUrl(): string {
@@ -41,12 +48,28 @@ function getSocketUrl(): string {
   return isLocalVite ? 'http://localhost:3000' : window.location.origin;
 }
 
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        resolve(reader.result);
+      } else {
+        reject(new Error('素材画像を読み込めませんでした'));
+      }
+    };
+    reader.onerror = () => reject(new Error('素材画像を読み込めませんでした'));
+    reader.readAsDataURL(blob);
+  });
+}
+
 export const ProjectionRuntime: React.FC = () => {
   const location = useLocation();
   const [projection, setProjection] = useState<ProjectionState>(EMPTY_PROJECTION);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedPresetTitle, setSelectedPresetTitle] = useState(IMAGE_PRESETS[0].title);
   const [customTitle, setCustomTitle] = useState('');
   const [customSubtitle, setCustomSubtitle] = useState('');
   const [customTheme, setCustomTheme] = useState<ProjectionTheme>('info');
@@ -93,6 +116,11 @@ export const ProjectionRuntime: React.FC = () => {
     }
   }, [projection.theme]);
 
+  const selectedPreset = useMemo(
+    () => IMAGE_PRESETS.find((preset) => preset.title === selectedPresetTitle) ?? IMAGE_PRESETS[0],
+    [selectedPresetTitle]
+  );
+
   const authenticatedRequest = async (path: string, body?: unknown) => {
     const token = localStorage.getItem(API_KEY_STORAGE_KEY)?.trim() || '';
     if (!token) {
@@ -126,6 +154,28 @@ export const ProjectionRuntime: React.FC = () => {
       setOpen(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : '投影操作に失敗しました');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const showPresetImage = async (preset: ImagePreset) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const imageResponse = await fetch(preset.image);
+      if (!imageResponse.ok) throw new Error('素材画像を読み込めませんでした');
+      const dataUrl = await blobToDataUrl(await imageResponse.blob());
+      const data = await authenticatedRequest('/api/projection/show', {
+        kind: 'image',
+        imageDataUrl: dataUrl,
+        title: preset.title,
+        theme: 'info',
+      });
+      setProjection(data);
+      setOpen(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '素材の投影に失敗しました');
     } finally {
       setBusy(false);
     }
@@ -228,7 +278,7 @@ export const ProjectionRuntime: React.FC = () => {
               <div>
                 <div style={styles.eyebrow}>DISPLAY CAST</div>
                 <h2 style={styles.modalTitle}>ディスプレイへ投影</h2>
-                <p style={styles.description}>/display を一時的に全面表示へ切り替えます。解除すると最新の番号表示へ戻ります。</p>
+                <p style={styles.description}>表示したい素材を選択して /display へ全面投影できます。解除すると最新の番号表示へ戻ります。</p>
               </div>
               <button type="button" className="kp-btn" style={styles.closeButton} disabled={busy} onClick={() => setOpen(false)}>✕</button>
             </div>
@@ -242,23 +292,44 @@ export const ProjectionRuntime: React.FC = () => {
             )}
 
             <section style={styles.section}>
-              <h3 style={styles.sectionTitle}>すぐに表示</h3>
-              <div style={styles.presetGrid}>
-                {PRESETS.map((preset) => (
-                  <button
-                    key={preset.title}
-                    type="button"
-                    className="kp-btn"
-                    style={styles.presetButton}
-                    disabled={busy}
-                    onClick={() => void showText(preset.title, preset.subtitle, preset.theme)}
-                  >
-                    <span style={styles.presetIcon}>{preset.icon}</span>
-                    <strong>{preset.title}</strong>
-                    <small>{preset.subtitle}</small>
-                  </button>
-                ))}
+              <h3 style={styles.sectionTitle}>投影素材を選択</h3>
+              <p style={styles.help}>使いたい素材を選択し、「この素材を表示」を押してください。</p>
+              <div style={styles.materialGrid}>
+                {IMAGE_PRESETS.map((preset) => {
+                  const selected = selectedPreset.title === preset.title;
+                  const active = projection.active && projection.kind === 'image' && projection.title === preset.title;
+                  return (
+                    <button
+                      key={preset.title}
+                      type="button"
+                      className="kp-btn"
+                      style={{
+                        ...styles.materialCard,
+                        ...(selected ? styles.materialCardSelected : {}),
+                        ...(active ? styles.materialCardActive : {}),
+                      }}
+                      disabled={busy}
+                      onClick={() => setSelectedPresetTitle(preset.title)}
+                    >
+                      <div style={styles.materialThumbWrap}>
+                        <img src={preset.image} alt={`${preset.title}の投影素材`} style={styles.materialThumb} />
+                        {selected && <span style={styles.materialCheck}>✓</span>}
+                        {active && <span style={styles.materialActiveBadge}>表示中</span>}
+                      </div>
+                      <strong style={styles.materialLabel}>{preset.title}</strong>
+                    </button>
+                  );
+                })}
               </div>
+              <button
+                type="button"
+                className="kp-btn"
+                style={styles.projectSelectedButton}
+                disabled={busy}
+                onClick={() => void showPresetImage(selectedPreset)}
+              >
+                📺 「{selectedPreset.title}」をこの素材で表示
+              </button>
             </section>
 
             <section style={styles.section}>
@@ -298,8 +369,8 @@ export const ProjectionRuntime: React.FC = () => {
             </section>
 
             <section style={styles.section}>
-              <h3 style={styles.sectionTitle}>画像を一時投影</h3>
-              <p style={styles.help}>PNG / JPEG / WebP / GIFなど。最大4MB。画像は一時データで、サーバー再起動後には残りません。</p>
+              <h3 style={styles.sectionTitle}>別の画像を一時投影</h3>
+              <p style={styles.help}>PNG / JPEG / WebP / GIFなど。最大4MB。ここから選んだ画像は一時データで、サーバー再起動後には残りません。</p>
               <input type="file" accept="image/*" onChange={(event) => handleImage(event.target.files?.[0])} style={styles.fileInput} />
               {imageDataUrl && (
                 <div style={styles.imagePreviewWrap}>
@@ -327,7 +398,7 @@ const styles: { [key: string]: React.CSSProperties } = {
   },
   floatingButtonActive: { backgroundColor: '#9f0b0d', borderColor: '#fca5a5', boxShadow: '0 0 0 4px rgba(239,68,68,0.18), 0 10px 28px rgba(15,23,42,0.3)' },
   overlay: { position: 'fixed', inset: 0, zIndex: 1300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', backgroundColor: 'rgba(2,6,23,0.76)', backdropFilter: 'blur(5px)' },
-  modal: { width: 'min(920px, 97vw)', maxHeight: '94vh', overflowY: 'auto', padding: '22px', borderRadius: '22px', backgroundColor: '#fff', color: '#0f172a', boxShadow: '0 28px 90px rgba(0,0,0,0.42)' },
+  modal: { width: 'min(1040px, 97vw)', maxHeight: '94vh', overflowY: 'auto', padding: '22px', borderRadius: '22px', backgroundColor: '#fff', color: '#0f172a', boxShadow: '0 28px 90px rgba(0,0,0,0.42)' },
   modalHeader: { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '16px' },
   eyebrow: { fontSize: '10px', fontWeight: 900, letterSpacing: '0.18em', color: '#64748b' },
   modalTitle: { margin: '3px 0 0', fontSize: '26px', fontWeight: 950 },
@@ -336,10 +407,17 @@ const styles: { [key: string]: React.CSSProperties } = {
   activeBanner: { marginTop: '16px', padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', borderRadius: '14px', backgroundColor: '#fff1f2', border: '1px solid #fecdd3', color: '#9f1239', fontSize: '12px', fontWeight: 800 },
   clearButton: { marginLeft: 'auto', padding: '8px 12px', borderRadius: '10px', border: '1px solid #fda4af', backgroundColor: '#fff', color: '#be123c', fontWeight: 900, cursor: 'pointer' },
   section: { marginTop: '18px', paddingTop: '16px', borderTop: '1px solid #e2e8f0' },
-  sectionTitle: { margin: '0 0 10px', fontSize: '17px', fontWeight: 900 },
-  presetGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '10px' },
-  presetButton: { minHeight: '122px', padding: '13px', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'center', gap: '4px', borderRadius: '15px', border: '1px solid #cbd5e1', backgroundColor: '#f8fafc', color: '#0f172a', textAlign: 'left', cursor: 'pointer' },
-  presetIcon: { fontSize: '25px' },
+  sectionTitle: { margin: '0 0 7px', fontSize: '17px', fontWeight: 900 },
+  materialGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px', marginTop: '10px' },
+  materialCard: { padding: 0, overflow: 'hidden', borderRadius: '15px', border: '2px solid #e2e8f0', backgroundColor: '#fff', color: '#0f172a', textAlign: 'left', cursor: 'pointer', boxShadow: '0 3px 10px rgba(15,23,42,0.06)', transition: 'border-color .15s ease, box-shadow .15s ease, transform .15s ease' },
+  materialCardSelected: { borderColor: '#dc2626', boxShadow: '0 0 0 3px rgba(220,38,38,0.14), 0 5px 14px rgba(15,23,42,0.10)', transform: 'translateY(-1px)' },
+  materialCardActive: { backgroundColor: '#fff7ed' },
+  materialThumbWrap: { position: 'relative', width: '100%', aspectRatio: '16 / 9', overflow: 'hidden', backgroundColor: '#111827' },
+  materialThumb: { width: '100%', height: '100%', display: 'block', objectFit: 'cover' },
+  materialCheck: { position: 'absolute', top: '8px', right: '8px', width: '30px', height: '30px', borderRadius: '999px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#dc2626', color: '#fff', fontSize: '18px', fontWeight: 950, boxShadow: '0 2px 8px rgba(0,0,0,.24)' },
+  materialActiveBadge: { position: 'absolute', left: '8px', top: '8px', padding: '5px 8px', borderRadius: '999px', backgroundColor: 'rgba(159,11,13,.92)', color: '#fff', fontSize: '10px', fontWeight: 900, boxShadow: '0 2px 8px rgba(0,0,0,.2)' },
+  materialLabel: { display: 'block', padding: '10px 12px', fontSize: '14px', fontWeight: 900 },
+  projectSelectedButton: { width: '100%', minHeight: '52px', marginTop: '12px', padding: '10px 16px', border: 'none', borderRadius: '13px', backgroundColor: '#9f0b0d', color: '#fff', fontSize: '15px', fontWeight: 900, cursor: 'pointer', boxShadow: '0 6px 16px rgba(159,11,13,.20)' },
   textInput: { width: '100%', boxSizing: 'border-box', padding: '12px 13px', border: '1px solid #cbd5e1', borderRadius: '12px', fontSize: '15px', fontWeight: 800 },
   textArea: { width: '100%', minHeight: '74px', boxSizing: 'border-box', marginTop: '8px', padding: '12px 13px', resize: 'vertical', border: '1px solid #cbd5e1', borderRadius: '12px', fontFamily: 'inherit', fontSize: '14px' },
   customRow: { marginTop: '8px', display: 'grid', gridTemplateColumns: 'minmax(170px, .6fr) 1fr', gap: '8px' },
