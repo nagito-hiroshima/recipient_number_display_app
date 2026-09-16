@@ -4,6 +4,7 @@ import { InputScreen } from './App';
 import { DisplayScreen } from './DisplayScreen';
 import { PublicDisplayScreen } from './PublicDisplayScreen';
 import { ProjectionRuntime } from './ProjectionRuntime';
+import { HeaderControlsBridge } from './HeaderControlsBridge';
 
 export const AppRouter: React.FC = () => {
   return (
@@ -15,6 +16,7 @@ export const AppRouter: React.FC = () => {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       <ProjectionRuntime />
+      <HeaderControlsBridge />
     </Router>
   );
 };
